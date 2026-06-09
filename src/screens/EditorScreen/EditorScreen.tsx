@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer, Rect, Group } from 'react-konva';
-import Konva from 'konva';
+
 import { useFlyerStore } from '../../features/flyer/flyerStore';
 import { getDimensionsForSize, FLYER_SIZE_INFO } from '../../features/flyer/sizes';
 import type { SizeKey } from '../../features/flyer/flyerStore';
