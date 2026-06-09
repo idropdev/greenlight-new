@@ -1,0 +1,227 @@
+import React from 'react';
+import { useFlyerStore } from '../flyer/flyerStore';
+import { FONTS } from '../../lib/fonts';
+
+export const TextControls: React.FC = () => {
+  const selectedNodeId = useFlyerStore((state) => state.selectedNodeId);
+  const textNodes = useFlyerStore((state) => state.textNodes);
+  const updateNode = useFlyerStore((state) => state.updateNode);
+
+  const node = textNodes.find((n) => n.id === selectedNodeId);
+
+  // If no node is selected, render a subtle instructions card placeholder
+  if (!selectedNodeId || !node) {
+    return (
+      <div className="w-full lg:w-80 bg-bone-light border border-graphite/10 rounded-lg p-6 flex flex-col items-center justify-center text-center text-graphite-muted min-h-[300px] border-dashed select-none shadow-sm">
+        <div className="w-12 h-12 rounded-lg bg-white border border-graphite/10 flex items-center justify-center mb-4 text-nonrepro">
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          </svg>
+        </div>
+        <span className="text-sm font-semibold text-graphite font-display">No Layer Selected</span>
+        <p className="text-xs text-graphite-muted mt-2 max-w-[200px] leading-relaxed">
+          Click a text layer on the flyer canvas to configure its content, typography, sizing, and color.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full lg:w-80 bg-bone-light border border-graphite/10 rounded-lg p-6 flex flex-col gap-6 shadow-md animate-in fade-in slide-in-from-bottom-2 duration-300">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-graphite/10">
+        <div>
+          <span className="text-[10px] font-bold text-pencil uppercase tracking-widest bg-pencil/10 px-2 py-0.5 rounded-full">
+            Active Layer
+          </span>
+          <h3 className="text-base font-bold text-graphite mt-1 capitalize font-display">
+            {node.field} Properties
+          </h3>
+        </div>
+        <span className="text-[10px] font-mono text-graphite-muted bg-white border border-graphite/10 px-2.5 py-1 rounded-lg">
+          ID: {node.id}
+        </span>
+      </div>
+
+      {/* Control: Text content */}
+      <div className="flex flex-col gap-2">
+        <label className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">
+          Text Content
+        </label>
+        <textarea
+          value={node.text}
+          onChange={(e) => updateNode(node.id, { text: e.target.value })}
+          rows={3}
+          placeholder="Enter text..."
+          className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg p-3 text-sm text-graphite placeholder-graphite-muted/50 focus:outline-none transition-all resize-none leading-relaxed"
+        />
+      </div>
+
+      {/* Control: Font Family */}
+      <div className="flex flex-col gap-2">
+        <label className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">
+          Typography
+        </label>
+        <div className="relative">
+          <select
+            value={node.fontFamily}
+            onChange={(e) => updateNode(node.id, { fontFamily: e.target.value })}
+            style={{ fontFamily: node.fontFamily }}
+            className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg p-3 text-sm text-graphite focus:outline-none transition-all cursor-pointer appearance-none pr-10"
+          >
+            {FONTS.map((font) => (
+              <option
+                key={font.family}
+                value={font.family}
+                style={{ fontFamily: font.family }}
+                className="bg-white text-graphite py-2 font-normal"
+              >
+                {font.label}
+              </option>
+            ))}
+          </select>
+          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-graphite-muted">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      {/* Control: Font Size */}
+      <div className="flex flex-col gap-2">
+        <label className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display flex justify-between">
+          <span>Font Size</span>
+          <span className="font-mono text-[10px] text-graphite-muted">8px – 200px</span>
+        </label>
+        <div className="flex items-center gap-4">
+          <input
+            type="range"
+            min="8"
+            max="200"
+            value={node.fontSize}
+            onChange={(e) => updateNode(node.id, { fontSize: parseInt(e.target.value) || 12 })}
+            className="flex-1 h-1 bg-nonrepro/20 rounded-lg appearance-none cursor-pointer"
+          />
+          <input
+            type="number"
+            min="8"
+            max="200"
+            value={node.fontSize}
+            onChange={(e) => {
+              const val = Math.min(200, Math.max(8, parseInt(e.target.value) || 8));
+              updateNode(node.id, { fontSize: val });
+            }}
+            className="w-16 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg p-2.5 text-xs text-graphite font-mono text-center focus:outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+        </div>
+      </div>
+
+      {/* Control: Color */}
+      <div className="flex flex-col gap-2">
+        <label className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">
+          Text Color
+        </label>
+        <div className="flex items-center gap-3">
+          <div className="relative w-11 h-11 rounded-lg overflow-hidden border border-graphite/15 flex-shrink-0 bg-white focus-within:ring-1 focus-within:ring-nonrepro focus-within:border-nonrepro transition-all">
+            <input
+              type="color"
+              value={node.fill}
+              onChange={(e) => updateNode(node.id, { fill: e.target.value })}
+              className="absolute inset-0 w-[200%] h-[200%] -translate-x-1/4 -translate-y-1/4 cursor-pointer border-0 p-0"
+            />
+          </div>
+          <div className="relative flex-1">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-graphite-muted text-sm font-mono">#</span>
+            <input
+              type="text"
+              value={node.fill.replace('#', '')}
+              onChange={(e) => {
+                let hex = e.target.value;
+                if (/^[0-9A-Fa-f]{0,6}$/.test(hex)) {
+                  updateNode(node.id, { fill: `#${hex}` });
+                }
+              }}
+              placeholder="FFFFFF"
+              maxLength={6}
+              className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg pl-8 pr-3 py-3 text-sm font-mono text-graphite uppercase focus:outline-none transition-all"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Control: Legibility */}
+      <div className="flex flex-col gap-4">
+        <label className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">
+          Legibility
+        </label>
+        
+        {/* Shadow Toggle */}
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-graphite">Drop Shadow</span>
+          <button
+            type="button"
+            onClick={() => updateNode(node.id, { shadowEnabled: !(node.shadowEnabled ?? true) })}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+              (node.shadowEnabled ?? true) ? 'bg-nonrepro' : 'bg-graphite/20'
+            }`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                (node.shadowEnabled ?? true) ? 'translate-x-4.5' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Highlight Toggle & Controls */}
+        <div className="flex flex-col gap-3 p-3 bg-white border border-graphite/10 rounded-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-graphite">Highlight Box</span>
+            <button
+              type="button"
+              onClick={() => updateNode(node.id, { highlightEnabled: !(node.highlightEnabled ?? false) })}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                (node.highlightEnabled ?? false) ? 'bg-nonrepro' : 'bg-graphite/20'
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                  (node.highlightEnabled ?? false) ? 'translate-x-4.5' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          
+          {(node.highlightEnabled ?? false) && (
+            <div className="flex flex-col gap-3 pt-2 border-t border-graphite/10 mt-1 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-graphite-muted w-12">Color</span>
+                <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-graphite/15 flex-shrink-0 bg-white focus-within:ring-1 focus-within:ring-nonrepro transition-all">
+                  <input
+                    type="color"
+                    value={node.highlightColor ?? '#000000'}
+                    onChange={(e) => updateNode(node.id, { highlightColor: e.target.value })}
+                    className="absolute inset-0 w-[200%] h-[200%] -translate-x-1/4 -translate-y-1/4 cursor-pointer border-0 p-0"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-graphite-muted w-12">Opacity</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={node.highlightOpacity ?? 0.5}
+                  onChange={(e) => updateNode(node.id, { highlightOpacity: parseFloat(e.target.value) })}
+                  className="flex-1 h-1 bg-nonrepro/20 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
