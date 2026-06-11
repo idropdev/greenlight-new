@@ -1,49 +1,97 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer, Rect, Group } from 'react-konva';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Konva from 'konva';
+import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer, Rect, Group, Line } from 'react-konva';
 
 import { useFlyerStore } from '../../features/flyer/flyerStore';
+import type { FlyerType, ImageNode, SizeKey, TextNode } from '../../features/flyer/flyerStore';
 import { getDimensionsForSize, FLYER_SIZE_INFO } from '../../features/flyer/sizes';
-import type { SizeKey } from '../../features/flyer/flyerStore';
-import { useUnsplashSearch } from '../../features/unsplash/useUnsplashSearch';
+import { fieldConfig } from '../../features/flyer/fieldConfig';
 import { buildTextNodes } from '../../features/flyer/layoutPresets';
-import { ensureFontsLoaded } from '../../lib/fonts';
+import { useUnsplashSearch } from '../../features/unsplash/useUnsplashSearch';
 import { TextControls } from '../../features/editor/TextControls';
 import { useExport } from '../../features/editor/useExport';
+import { ensureFontsLoaded } from '../../lib/fonts';
 
-/**
- * Custom hook to load an image URL into an HTMLImageElement locally.
- * Skips crossOrigin for blob: URLs to avoid taint issues with uploaded files.
- */
+const FLYER_TYPES: Array<{ key: FlyerType; label: string }> = [
+  { key: 'event', label: 'Event' },
+  { key: 'service', label: 'Service' },
+  { key: 'product', label: 'Product' },
+  { key: 'sale', label: 'Sale' },
+  { key: 'realEstate', label: 'Real Estate' },
+  { key: 'hiring', label: 'Hiring' },
+];
+
+const REQUIRED_FIELD_BY_TYPE: Record<FlyerType, string> = {
+  event: 'title',
+  service: 'businessName',
+  product: 'productName',
+  sale: 'headline',
+  realEstate: 'propertyTitle',
+  hiring: 'jobTitle',
+};
+
+type GuideLine = {
+  orientation: 'H' | 'V';
+  position: number;
+};
+
+type NodeBounds = {
+  left: number;
+  centerX: number;
+  right: number;
+  top: number;
+  centerY: number;
+  bottom: number;
+};
+
+const SNAP_THRESHOLD = 6;
+const GUIDE_COLOR = '#7FA8D8';
+const TEXT_MIN_WIDTH = 40;
+const MULTI_SELECT_INDICATOR_PADDING = 4;
+const TEXT_SIDE_ANCHORS = new Set(['middle-left', 'middle-right']);
+
+function hasRequiredDetails(type: FlyerType | null, fields: Record<string, string>) {
+  if (!type) return false;
+  return Boolean(fields[REQUIRED_FIELD_BY_TYPE[type]]?.trim());
+}
+
 function useImage(url: string | null) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [status, setStatus] = useState<'loading' | 'loaded' | 'failed'>('loading');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'loaded' | 'failed'>('idle');
 
   useEffect(() => {
     if (!url) {
-      setImage(null);
-      setStatus('failed');
-      return;
+      let active = true;
+      queueMicrotask(() => {
+        if (active) {
+          setImage(null);
+          setStatus('idle');
+        }
+      });
+      return () => {
+        active = false;
+      };
     }
 
-    setStatus('loading');
     const img = new Image();
-
-    // Only set crossOrigin for remote URLs — blob: is same-origin and doesn't need it
-    const isBlobUrl = url.startsWith('blob:');
-    if (!isBlobUrl) {
+    if (!url.startsWith('blob:')) {
       img.crossOrigin = 'anonymous';
     }
 
-    let isMounted = true;
+    let active = true;
+    queueMicrotask(() => {
+      if (active) {
+        setStatus('loading');
+      }
+    });
     img.onload = () => {
-      if (isMounted) {
+      if (active) {
         setImage(img);
         setStatus('loaded');
       }
     };
     img.onerror = () => {
-      if (isMounted) {
+      if (active) {
         setImage(null);
         setStatus('failed');
       }
@@ -51,15 +99,14 @@ function useImage(url: string | null) {
     img.src = url;
 
     return () => {
-      isMounted = false;
+      active = false;
     };
   }, [url]);
 
   return [image, status] as const;
 }
 
-/** Safe defaults for nodes that may lack legibility fields (backwards compat). */
-function resolveNode(node: any) {
+function resolveNode(node: Partial<TextNode>) {
   return {
     shadowEnabled: node.shadowEnabled ?? true,
     shadowColor: node.shadowColor ?? '#000000',
@@ -71,39 +118,251 @@ function resolveNode(node: any) {
   };
 }
 
+function estimateTextHeight(node: Pick<TextNode, 'text' | 'fontSize' | 'width'>) {
+  const lineHeight = node.fontSize * 1.2;
+  const estimatedLines = Math.max(1, Math.ceil((node.text.length * node.fontSize * 0.55) / Math.max(node.width, 1)));
+  return lineHeight * estimatedLines;
+}
+
+function getTextMinWidth(node: Pick<TextNode, 'text' | 'fontFamily' | 'fontSize'>) {
+  const longestWord = node.text
+    .split(/\s+/)
+    .reduce((longest, word) => word.length > longest.length ? word : longest, '');
+
+  if (!longestWord) {
+    return TEXT_MIN_WIDTH;
+  }
+
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+
+  if (!context) {
+    return TEXT_MIN_WIDTH;
+  }
+
+  context.font = `${node.fontSize}px ${node.fontFamily}`;
+  return Math.max(TEXT_MIN_WIDTH, Math.ceil(context.measureText(longestWord).width));
+}
+
+function getNodeBounds(node: Pick<TextNode, 'x' | 'y' | 'text' | 'fontSize' | 'width'>): NodeBounds {
+  const height = estimateTextHeight(node);
+  return {
+    left: node.x,
+    centerX: node.x + node.width / 2,
+    right: node.x + node.width,
+    top: node.y,
+    centerY: node.y + height / 2,
+    bottom: node.y + height,
+  };
+}
+
+function dedupePoints(points: number[]) {
+  return Array.from(new Set(points.map((point) => Math.round(point * 100) / 100)));
+}
+
+function findClosestSnap(snapPoints: number[], position: number) {
+  return snapPoints
+    .map((snapPoint) => ({
+      snapPoint,
+      distance: Math.abs(position - snapPoint),
+    }))
+    .filter((match) => match.distance <= SNAP_THRESHOLD)
+    .sort((a, b) => a.distance - b.distance)[0];
+}
+
+function nanoid() {
+  return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 12);
+}
+
+type ImageNodeViewProps = {
+  node: ImageNode;
+  selected: boolean;
+  onSelect: (event: Konva.KonvaEventObject<Event>) => void;
+  onUpdate: (id: string, partial: Partial<ImageNode>) => void;
+  onRemove: (id: string) => void;
+  onReady: () => void;
+};
+
+const ImageNodeView: React.FC<ImageNodeViewProps> = ({ node, selected, onSelect, onUpdate, onRemove, onReady }) => {
+  const [image] = useImage(node.url);
+
+  useEffect(() => {
+    if (image) {
+      onReady();
+    }
+  }, [image, onReady]);
+
+  if (!image) return null;
+
+  return (
+    <Group>
+      <KonvaImage
+        id={node.id}
+        image={image}
+        x={node.x}
+        y={node.y}
+        width={node.width}
+        height={node.height}
+        draggable
+        onClick={onSelect}
+        onTap={onSelect}
+        onDragStart={onSelect}
+        onDragEnd={(event) => {
+          onUpdate(node.id, {
+            x: event.target.x(),
+            y: event.target.y(),
+          });
+        }}
+        onTransformEnd={(event) => {
+          const imageNode = event.target as Konva.Image;
+          const scaleX = imageNode.scaleX();
+          const scaleY = imageNode.scaleY();
+
+          imageNode.scaleX(1);
+          imageNode.scaleY(1);
+
+          onUpdate(node.id, {
+            x: imageNode.x(),
+            y: imageNode.y(),
+            width: Math.max(20, imageNode.width() * scaleX),
+            height: Math.max(20, imageNode.height() * scaleY),
+          });
+        }}
+        onMouseEnter={(event) => {
+          const stage = event.target.getStage();
+          if (stage) stage.container().style.cursor = 'move';
+        }}
+        onMouseLeave={(event) => {
+          const stage = event.target.getStage();
+          if (stage) stage.container().style.cursor = 'default';
+        }}
+      />
+      {selected && (
+        <Group
+          x={node.x + node.width - 12}
+          y={node.y - 12}
+          onClick={(event) => {
+            event.cancelBubble = true;
+            onRemove(node.id);
+          }}
+          onTap={(event) => {
+            event.cancelBubble = true;
+            onRemove(node.id);
+          }}
+          onMouseEnter={(event) => {
+            const stage = event.target.getStage();
+            if (stage) stage.container().style.cursor = 'pointer';
+          }}
+          onMouseLeave={(event) => {
+            const stage = event.target.getStage();
+            if (stage) stage.container().style.cursor = 'default';
+          }}
+        >
+          <Rect x={0} y={0} width={24} height={24} cornerRadius={12} fill="#2D2D2A" opacity={0.92} />
+          <KonvaText
+            text="x"
+            x={0}
+            y={2}
+            width={24}
+            height={20}
+            align="center"
+            verticalAlign="middle"
+            fontFamily="Inter, Arial, sans-serif"
+            fontSize={14}
+            fill="#f5efe4"
+            listening={false}
+          />
+        </Group>
+      )}
+    </Group>
+  );
+};
+
 export const EditorScreen: React.FC = () => {
-  const navigate = useNavigate();
   const type = useFlyerStore((state) => state.type);
   const size = useFlyerStore((state) => state.size);
   const fields = useFlyerStore((state) => state.fields);
   const bgImageUrl = useFlyerStore((state) => state.bgImageUrl);
   const textNodes = useFlyerStore((state) => state.textNodes);
-  const setTextNodes = useFlyerStore((state) => state.setTextNodes);
   const selectedNodeId = useFlyerStore((state) => state.selectedNodeId);
-  const selectNode = useFlyerStore((state) => state.selectNode);
-  const updateNode = useFlyerStore((state) => state.updateNode);
+  const selectedNodeIds = useFlyerStore((state) => state.selectedNodeIds);
+  const imageNodes = useFlyerStore((state) => state.imageNodes);
+  const setType = useFlyerStore((state) => state.setType);
   const setSize = useFlyerStore((state) => state.setSize);
+  const setField = useFlyerStore((state) => state.setField);
+  const setTextNodes = useFlyerStore((state) => state.setTextNodes);
+  const updateNode = useFlyerStore((state) => state.updateNode);
+  const addImageNode = useFlyerStore((state) => state.addImageNode);
+  const updateImageNode = useFlyerStore((state) => state.updateImageNode);
+  const removeImageNode = useFlyerStore((state) => state.removeImageNode);
+  const selectNodes = useFlyerStore((state) => state.selectNodes);
   const setBgImageUrl = useFlyerStore((state) => state.setBgImageUrl);
   const reset = useFlyerStore((state) => state.reset);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [searchKeywords, setSearchKeywords] = useState('');
-
-  const stageRef = useRef<any>(null);
-  const transformerRef = useRef<any>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const uploadedUrlRef = useRef<string | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [backgroundBlur, setBackgroundBlur] = useState(0);
+  const [backgroundOpacity, setBackgroundOpacity] = useState(50);
+  const [activeGuides, setActiveGuides] = useState<GuideLine[]>([]);
+  const [imageRenderVersion, setImageRenderVersion] = useState(0);
 
-  // Load web fonts on mount
+  const stageRef = useRef<Konva.Stage | null>(null);
+  const transformerRef = useRef<Konva.Transformer | null>(null);
+  const imageTransformerRef = useRef<Konva.Transformer | null>(null);
+  const backgroundImageRef = useRef<Konva.Image | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const uploadedUrlRef = useRef<string | null>(null);
+  const uploadedImageUrlsRef = useRef<Set<string>>(new Set());
+  const dragStartRef = useRef<{
+    draggedId: string;
+    draggedX: number;
+    draggedY: number;
+    nodePositions: Record<string, { x: number; y: number }>;
+  } | null>(null);
+  const lastTextTransformAnchorRef = useRef<string | null>(null);
+
+  const { search, autoSearch, shuffle, isLoading: searchLoading, error: searchError, photos, noResults } = useUnsplashSearch();
+  const [imgElement, imgStatus] = useImage(bgImageUrl);
+  const { exportFlyer, isExporting } = useExport(stageRef, transformerRef, imageTransformerRef);
+
+  const dimensions = getDimensionsForSize(size);
+  const { width: trueWidth, height: trueHeight } = dimensions;
+  const currentSizeInfo = FLYER_SIZE_INFO.find((s) => s.key === size);
+  const fieldDefinitions = type ? fieldConfig[type] : [];
+  const canExport = Boolean(bgImageUrl || textNodes.length > 0 || imageNodes.length > 0);
+  const selectedImageNode = imageNodes.find((node) => node.id === selectedNodeId);
+  const selectedTextNode = textNodes.find((node) => node.id === selectedNodeId);
+  const isImageLoading = Boolean(bgImageUrl && imgStatus === 'loading');
+  const isFetchingOrLoading = searchLoading || isImageLoading;
+  const showNoImagesMessage = noResults && !bgImageUrl;
+  const isCanvasEmpty = textNodes.length === 0 && bgImageUrl === null;
+  const hasDetailsForCreate = hasRequiredDetails(type, fields);
+  const primaryBackgroundDisabled = isCanvasEmpty
+    ? isFetchingOrLoading || !hasDetailsForCreate
+    : isFetchingOrLoading || showNoImagesMessage;
+  const primaryBackgroundTitle = isCanvasEmpty && !hasDetailsForCreate
+    ? 'Fill in the details first'
+    : showNoImagesMessage && !isCanvasEmpty
+      ? 'No images to shuffle'
+      : undefined;
+  const primaryBackgroundLabel = isFetchingOrLoading
+    ? isCanvasEmpty ? 'Creating...' : 'Shuffling...'
+    : isCanvasEmpty ? 'Create Flyer' : showNoImagesMessage ? 'No images to shuffle' : 'Shuffle Background';
+  const backgroundImageOpacity = Math.min(backgroundOpacity, 50) / 50;
+  const backgroundDarkOverlayOpacity = Math.max(backgroundOpacity - 50, 0) / 50;
+
+  const [scale, setScale] = useState(1);
+  const [stageSize, setStageSize] = useState({ width: 400, height: 400 });
+
   useEffect(() => {
     let active = true;
     ensureFontsLoaded().then(() => {
       if (active) {
         setFontsLoaded(true);
-        if (stageRef.current) {
-          stageRef.current.batchDraw();
-        }
+        stageRef.current?.batchDraw();
       }
     });
     return () => {
@@ -111,111 +370,79 @@ export const EditorScreen: React.FC = () => {
     };
   }, []);
 
-  // Cleanup uploaded object URL on unmount
   useEffect(() => {
+    const uploadedImageUrls = uploadedImageUrlsRef.current;
+
     return () => {
       if (uploadedUrlRef.current) {
         URL.revokeObjectURL(uploadedUrlRef.current);
       }
+      uploadedImageUrls.forEach((url) => URL.revokeObjectURL(url));
+      uploadedImageUrls.clear();
     };
   }, []);
 
-  // Synchronize transformer nodes with selection
-  useEffect(() => {
-    if (selectedNodeId) {
-      const stage = stageRef.current;
-      const transformer = transformerRef.current;
-      if (stage && transformer) {
-        const selectedNode = stage.findOne('#' + selectedNodeId);
-        if (selectedNode) {
-          transformer.nodes([selectedNode]);
-          transformer.getLayer()?.batchDraw();
-          return;
-        }
-      }
-    }
-    if (transformerRef.current) {
-      transformerRef.current.nodes([]);
-      transformerRef.current.getLayer()?.batchDraw();
-    }
-  }, [selectedNodeId, textNodes]);
-
-  // 1. Route guard: Redirect if type is null
-  useEffect(() => {
-    if (!type) {
-      navigate('/', { replace: true });
-    }
-  }, [type, navigate]);
-
-  // Expose store to window for console debugging
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      (window as any).__store = useFlyerStore;
-    }
-  }, []);
-
-
-
-  // Get physical sizes
-  const dimensions = getDimensionsForSize(size);
-  const { width: trueWidth, height: trueHeight } = dimensions;
-
-  // 2. Fetch and manage Unsplash background search
-  const { search, shuffle, isLoading: searchLoading, error: searchError, photos, currentIndex } = useUnsplashSearch();
-
-  // Show error toast on fetch fail
   useEffect(() => {
     if (searchError) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToastMessage(searchError);
-      const timer = setTimeout(() => {
-        setToastMessage(null);
-      }, 5000);
-      return () => clearTimeout(timer);
+      const showTimer = window.setTimeout(() => setToastMessage(searchError), 0);
+      const hideTimer = window.setTimeout(() => setToastMessage(null), 5000);
+      return () => {
+        window.clearTimeout(showTimer);
+        window.clearTimeout(hideTimer);
+      };
     }
   }, [searchError]);
 
-  const searchInitiated = useRef(false);
-
   useEffect(() => {
-    if (searchInitiated.current) return;
-    searchInitiated.current = true;
-
-    // Derive initial search query: title/businessName/productName -> fallback to flyer type
-    const query = fields.title || fields.businessName || fields.productName || type || 'flyer';
-    search(query);
-  }, [type, fields, search]);
-
-  // 2b. Initialize TextNodes from fields once if currently empty
-  useEffect(() => {
-    if (type && textNodes.length === 0) {
-      const generatedNodes = buildTextNodes(type, size, fields);
-      if (generatedNodes.length > 0) {
-        setTextNodes(generatedNodes);
-      }
+    if (!type || !bgImageUrl || textNodes.length > 0 || !hasRequiredDetails(type, fields)) {
+      return;
     }
-  }, [type, size, fields, textNodes.length, setTextNodes]);
 
-  // Load the current image
-  const [imgElement, imgStatus] = useImage(bgImageUrl);
-  const isImageLoading = !!(bgImageUrl && imgStatus === 'loading');
-  const isFetchingOrLoading = searchLoading || isImageLoading;
+    const generatedNodes = buildTextNodes(type, size, fields);
+    if (generatedNodes.length > 0) {
+      setTextNodes(generatedNodes);
+    }
+  }, [type, size, fields, bgImageUrl, textNodes.length, setTextNodes]);
 
-  // 3. Scale canvas to fit viewport container dynamically
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  const [stageSize, setStageSize] = useState({ width: 400, height: 400 });
+  useEffect(() => {
+    const stage = stageRef.current;
+    const transformer = transformerRef.current;
+    const selectedNodes = selectedNodeIds
+      .map((id) => stage?.findOne('#' + id))
+      .filter((node): node is Konva.Node => Boolean(node));
 
-  // Custom export hook
-  const { exportFlyer, isExporting } = useExport(stageRef, transformerRef);
+    if (selectedNodes.length > 0 && transformer) {
+      transformer.nodes(selectedNodes);
+      transformer.getLayer()?.batchDraw();
+      return;
+    }
+
+    transformerRef.current?.nodes([]);
+    transformerRef.current?.getLayer()?.batchDraw();
+  }, [selectedNodeIds, textNodes]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    const transformer = imageTransformerRef.current;
+    const selectedImage = selectedImageNode ? stage?.findOne('#' + selectedImageNode.id) : null;
+
+    if (selectedImage && transformer) {
+      transformer.nodes([selectedImage]);
+      transformer.getLayer()?.batchDraw();
+      return;
+    }
+
+    imageTransformerRef.current?.nodes([]);
+    imageTransformerRef.current?.getLayer()?.batchDraw();
+  }, [selectedImageNode, imageNodes, imageRenderVersion]);
 
   const updateScale = useCallback(() => {
     if (!containerRef.current) return;
     const padding = 32;
     const containerW = Math.max(containerRef.current.clientWidth - padding, 200);
     const containerH = Math.max(containerRef.current.clientHeight - padding, 200);
-
     const newScale = Math.min(containerW / trueWidth, containerH / trueHeight);
+
     setScale(newScale);
     setStageSize({
       width: trueWidth * newScale,
@@ -226,33 +453,416 @@ export const EditorScreen: React.FC = () => {
   useEffect(() => {
     updateScale();
     window.addEventListener('resize', updateScale);
-    return () => {
-      window.removeEventListener('resize', updateScale);
-    };
+    return () => window.removeEventListener('resize', updateScale);
   }, [updateScale]);
 
-  // ── Feature 1: Size change handler with text node clamping ──
+  const cropData = useMemo(() => {
+    if (!imgElement) return undefined;
+
+    const imgWidth = imgElement.width;
+    const imgHeight = imgElement.height;
+    const imgRatio = imgWidth / imgHeight;
+    const canvasRatio = trueWidth / trueHeight;
+
+    if (imgRatio > canvasRatio) {
+      const cropWidth = imgHeight * canvasRatio;
+      return {
+        x: (imgWidth - cropWidth) / 2,
+        y: 0,
+        width: cropWidth,
+        height: imgHeight,
+      };
+    }
+
+    const cropHeight = imgWidth / canvasRatio;
+    return {
+      x: 0,
+      y: (imgHeight - cropHeight) / 2,
+      width: imgWidth,
+      height: cropHeight,
+    };
+  }, [imgElement, trueWidth, trueHeight]);
+
+  useEffect(() => {
+    const imageNode = backgroundImageRef.current;
+    if (!imageNode) return;
+
+    if (backgroundBlur > 0) {
+      imageNode.cache();
+    } else {
+      imageNode.clearCache();
+    }
+
+    imageNode.getLayer()?.batchDraw();
+  }, [backgroundBlur, imgElement, cropData, trueWidth, trueHeight]);
+
+  const gridLines = useMemo(() => {
+    const spacing = 90;
+    const vertical = Array.from({ length: Math.floor(trueWidth / spacing) + 1 }, (_, index) => ({
+      id: `v-${index}`,
+      points: [index * spacing, 0, index * spacing, trueHeight],
+    }));
+    const horizontal = Array.from({ length: Math.floor(trueHeight / spacing) + 1 }, (_, index) => ({
+      id: `h-${index}`,
+      points: [0, index * spacing, trueWidth, index * spacing],
+    }));
+    return [...vertical, ...horizontal];
+  }, [trueWidth, trueHeight]);
+
   const handleSizeChange = useCallback((newSize: SizeKey) => {
     if (newSize === size) return;
     setSize(newSize);
 
-    const CLAMP_MARGIN = 20;
+    const clampMargin = 20;
     const newDims = getDimensionsForSize(newSize);
     textNodes.forEach((node) => {
-      const clampedX = Math.max(0, Math.min(node.x, newDims.width - CLAMP_MARGIN));
-      const clampedY = Math.max(0, Math.min(node.y, newDims.height - CLAMP_MARGIN));
+      const clampedX = Math.max(0, Math.min(node.x, newDims.width - clampMargin));
+      const clampedY = Math.max(0, Math.min(node.y, newDims.height - clampMargin));
       if (clampedX !== node.x || clampedY !== node.y) {
         updateNode(node.id, { x: clampedX, y: clampedY });
       }
     });
   }, [size, setSize, textNodes, updateNode]);
 
-  // ── Feature 2b: File upload handler ──
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleTypeChange = useCallback((newType: FlyerType) => {
+    if (newType === type) return;
+
+    setType(newType);
+    selectNodes([]);
+    setTextNodes([]);
+
+    if (bgImageUrl && hasRequiredDetails(newType, fields)) {
+      const generatedNodes = buildTextNodes(newType, size, fields);
+      setTextNodes(generatedNodes);
+    }
+  }, [type, setType, selectNodes, setTextNodes, bgImageUrl, fields, size]);
+
+  const handleFieldChange = useCallback((key: string, value: string) => {
+    setField(key, value);
+    const matchingNode = textNodes.find((node) => node.field === key);
+    if (matchingNode) {
+      updateNode(matchingNode.id, { text: value });
+    }
+  }, [setField, textNodes, updateNode]);
+
+  const handleKeywordSearch = useCallback((event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = searchKeywords.trim();
+    if (trimmed) {
+      search(trimmed, type || 'flyer');
+    }
+  }, [searchKeywords, search, type]);
+
+  const handleShuffle = useCallback(() => {
+    if (showNoImagesMessage) {
+      return;
+    }
+
+    if (photos.length > 1) {
+      shuffle();
+      return;
+    }
+
+    autoSearch(type, fields);
+  }, [showNoImagesMessage, photos.length, shuffle, fields, type, autoSearch]);
+
+  const handleTextSelect = useCallback((
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+    id: string
+  ) => {
+    event.cancelBubble = true;
+
+    const isShiftClick = 'shiftKey' in event.evt && event.evt.shiftKey;
+    if (!isShiftClick) {
+      selectNodes([id]);
+      return;
+    }
+
+    const current = useFlyerStore.getState();
+    const alreadySelected = current.selectedNodeIds.includes(id);
+
+    if (!alreadySelected) {
+      selectNodes([...current.selectedNodeIds, id]);
+      return;
+    }
+
+    const remainingIds = current.selectedNodeIds.filter((selectedId) => selectedId !== id);
+    if (current.selectedNodeId === id) {
+      selectNodes(remainingIds);
+      return;
+    }
+
+    useFlyerStore.setState({ selectedNodeIds: remainingIds });
+  }, [selectNodes]);
+
+  const handleTextDragStart = useCallback((node: TextNode) => {
+    const current = useFlyerStore.getState();
+    const selectedIds = current.selectedNodeIds.includes(node.id)
+      ? current.selectedNodeIds
+      : [node.id];
+
+    if (!current.selectedNodeIds.includes(node.id)) {
+      selectNodes([node.id]);
+    }
+
+    dragStartRef.current = {
+      draggedId: node.id,
+      draggedX: node.x,
+      draggedY: node.y,
+      nodePositions: Object.fromEntries(
+        current.textNodes
+          .filter((textNode) => selectedIds.includes(textNode.id))
+          .map((textNode) => [textNode.id, { x: textNode.x, y: textNode.y }])
+      ),
+    };
+  }, [selectNodes]);
+
+  const handleTextDragMove = useCallback((event: Konva.KonvaEventObject<DragEvent>, node: TextNode) => {
+    const draggedNode = event.target as Konva.Group;
+    const draggedBounds = getNodeBounds({
+      ...node,
+      x: draggedNode.x(),
+      y: draggedNode.y(),
+    });
+    const selectedIdSet = new Set(useFlyerStore.getState().selectedNodeIds);
+    const otherNodeBounds = textNodes
+      .filter((textNode) => textNode.id !== node.id && !selectedIdSet.has(textNode.id))
+      .map(getNodeBounds);
+
+    const verticalSnapPoints = dedupePoints([
+      0,
+      trueWidth / 2,
+      trueWidth,
+      ...otherNodeBounds.flatMap((bounds) => [bounds.left, bounds.centerX, bounds.right]),
+    ]);
+    const horizontalSnapPoints = dedupePoints([
+      0,
+      trueHeight / 2,
+      trueHeight,
+      ...otherNodeBounds.flatMap((bounds) => [bounds.top, bounds.centerY, bounds.bottom]),
+    ]);
+
+    let snappedX = draggedNode.x();
+    let snappedY = draggedNode.y();
+    const guides: GuideLine[] = [];
+
+    const verticalMatches = [
+      { position: draggedBounds.left, offset: 0 },
+      { position: draggedBounds.centerX, offset: node.width / 2 },
+      { position: draggedBounds.right, offset: node.width },
+    ].flatMap((edge) =>
+      verticalSnapPoints.map((snapPoint) => ({
+        snapPoint,
+        offset: edge.offset,
+        distance: Math.abs(edge.position - snapPoint),
+      }))
+    );
+    const closestVertical = verticalMatches
+      .filter((match) => match.distance <= SNAP_THRESHOLD)
+      .sort((a, b) => a.distance - b.distance)[0];
+
+    if (closestVertical) {
+      snappedX = closestVertical.snapPoint - closestVertical.offset;
+      guides.push({ orientation: 'V', position: closestVertical.snapPoint });
+    }
+
+    const nodeHeight = estimateTextHeight(node);
+    const horizontalMatches = [
+      { position: draggedBounds.top, offset: 0 },
+      { position: draggedBounds.centerY, offset: nodeHeight / 2 },
+      { position: draggedBounds.bottom, offset: nodeHeight },
+    ].flatMap((edge) =>
+      horizontalSnapPoints.map((snapPoint) => ({
+        snapPoint,
+        offset: edge.offset,
+        distance: Math.abs(edge.position - snapPoint),
+      }))
+    );
+    const closestHorizontal = horizontalMatches
+      .filter((match) => match.distance <= SNAP_THRESHOLD)
+      .sort((a, b) => a.distance - b.distance)[0];
+
+    if (closestHorizontal) {
+      snappedY = closestHorizontal.snapPoint - closestHorizontal.offset;
+      guides.push({ orientation: 'H', position: closestHorizontal.snapPoint });
+    }
+
+    if (snappedX !== draggedNode.x() || snappedY !== draggedNode.y()) {
+      draggedNode.position({ x: snappedX, y: snappedY });
+    }
+
+    const dragStart = dragStartRef.current;
+    if (dragStart && dragStart.draggedId === node.id) {
+      const dx = draggedNode.x() - dragStart.draggedX;
+      const dy = draggedNode.y() - dragStart.draggedY;
+
+      Object.entries(dragStart.nodePositions).forEach(([id, position]) => {
+        if (id !== node.id) {
+          updateNode(id, { x: position.x + dx, y: position.y + dy });
+        }
+      });
+    }
+
+    setActiveGuides(guides);
+    draggedNode.getLayer()?.batchDraw();
+  }, [textNodes, trueWidth, trueHeight, updateNode]);
+
+  const handleTextTransform = useCallback((event: Konva.KonvaEventObject<Event>, node: TextNode) => {
+    const activeAnchor = transformerRef.current?.getActiveAnchor() ?? null;
+    lastTextTransformAnchorRef.current = activeAnchor;
+
+    if (!activeAnchor || !TEXT_SIDE_ANCHORS.has(activeAnchor)) {
+      setActiveGuides([]);
+      return;
+    }
+
+    const transformedNode = event.target as Konva.Group;
+    const minWidth = getTextMinWidth(node);
+    const scaledWidth = Math.max(minWidth, node.width * Math.abs(transformedNode.scaleX()));
+    const resizedLeft = transformedNode.x();
+    const resizedRight = resizedLeft + scaledWidth;
+    const selectedIdSet = new Set(useFlyerStore.getState().selectedNodeIds);
+    const otherNodeBounds = textNodes
+      .filter((textNode) => textNode.id !== node.id && !selectedIdSet.has(textNode.id))
+      .map(getNodeBounds);
+
+    const verticalSnapPoints = dedupePoints([
+      0,
+      trueWidth / 2,
+      trueWidth,
+      ...otherNodeBounds.flatMap((bounds) => [bounds.left, bounds.centerX, bounds.right]),
+    ]);
+
+    let nextX = resizedLeft;
+    let nextWidth = scaledWidth;
+    const guides: GuideLine[] = [];
+
+    if (activeAnchor === 'middle-right') {
+      const closestRight = findClosestSnap(verticalSnapPoints, resizedRight);
+      if (closestRight) {
+        nextWidth = closestRight.snapPoint - nextX;
+        guides.push({ orientation: 'V', position: closestRight.snapPoint });
+      }
+      nextWidth = Math.max(minWidth, nextWidth);
+    } else {
+      const closestLeft = findClosestSnap(verticalSnapPoints, resizedLeft);
+      if (closestLeft) {
+        nextX = closestLeft.snapPoint;
+        nextWidth = resizedRight - nextX;
+        guides.push({ orientation: 'V', position: closestLeft.snapPoint });
+      }
+
+      if (nextWidth < minWidth) {
+        nextX = resizedRight - minWidth;
+        nextWidth = minWidth;
+      }
+    }
+
+    transformedNode.position({ x: nextX, y: transformedNode.y() });
+    transformedNode.scaleX(1);
+    transformedNode.scaleY(1);
+
+    updateNode(node.id, {
+      x: nextX,
+      y: transformedNode.y(),
+      width: Math.round(nextWidth),
+    });
+    setActiveGuides(guides);
+    transformedNode.getLayer()?.batchDraw();
+  }, [textNodes, trueWidth, updateNode]);
+
+  const addImageFileAsNode = useCallback((file: File, position?: { x: number; y: number }) => {
+    if (!file.type.startsWith('image/')) {
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    uploadedImageUrlsRef.current.add(objectUrl);
+
+    const image = new Image();
+    image.onload = () => {
+      const naturalWidth = image.naturalWidth || image.width;
+      const naturalHeight = image.naturalHeight || image.height;
+      const maxWidth = trueWidth * 0.3;
+      const width = Math.min(maxWidth, naturalWidth);
+      const height = naturalHeight * (width / Math.max(naturalWidth, 1));
+      const x = position ? position.x - width / 2 : (trueWidth - width) / 2;
+      const y = position ? position.y - height / 2 : (trueHeight - height) / 2;
+
+      addImageNode({
+        id: nanoid(),
+        url: objectUrl,
+        x: Math.max(0, Math.min(x, trueWidth - width)),
+        y: Math.max(0, Math.min(y, trueHeight - height)),
+        width,
+        height,
+      });
+    };
+    image.onerror = () => {
+      uploadedImageUrlsRef.current.delete(objectUrl);
+      URL.revokeObjectURL(objectUrl);
+    };
+    image.src = objectUrl;
+  }, [addImageNode, trueWidth, trueHeight]);
+
+  const handleImageFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
 
-    // Revoke previous uploaded object URL
+    addImageFileAsNode(file);
+
+    if (imageFileInputRef.current) {
+      imageFileInputRef.current.value = '';
+    }
+  }, [addImageFileAsNode]);
+
+  const handleImageSelect = useCallback((event: Konva.KonvaEventObject<Event>) => {
+    event.cancelBubble = true;
+    const id = event.target.id();
+    useFlyerStore.setState({ selectedNodeId: id, selectedNodeIds: [] });
+  }, []);
+
+  const handleImageReady = useCallback(() => {
+    setImageRenderVersion((version) => version + 1);
+  }, []);
+
+  const handleRemoveImageNode = useCallback((id: string) => {
+    const node = useFlyerStore.getState().imageNodes.find((imageNode) => imageNode.id === id);
+    if (node && uploadedImageUrlsRef.current.has(node.url)) {
+      uploadedImageUrlsRef.current.delete(node.url);
+      URL.revokeObjectURL(node.url);
+    }
+    removeImageNode(id);
+  }, [removeImageNode]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' || !selectedImageNode) {
+        return;
+      }
+
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      handleRemoveImageNode(selectedImageNode.id);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleRemoveImageNode, selectedImageNode]);
+
+  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
     if (uploadedUrlRef.current) {
       URL.revokeObjectURL(uploadedUrlRef.current);
     }
@@ -261,221 +871,185 @@ export const EditorScreen: React.FC = () => {
     uploadedUrlRef.current = objectUrl;
     setBgImageUrl(objectUrl);
 
-    // Reset file input so the same file can be re-selected
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   }, [setBgImageUrl]);
 
-  // ── Feature 2a: Keyword search handler ──
-  const handleKeywordSearch = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = searchKeywords.trim();
-    if (!trimmed) return;
-    search(trimmed);
-  }, [searchKeywords, search]);
-
-  if (!type) {
-    return null;
-  }
-
-  // 4. Calculate cover crop coordinates for Konva Image
-  let cropData = undefined;
-  if (imgElement) {
-    const imgWidth = imgElement.width;
-    const imgHeight = imgElement.height;
-    const imgRatio = imgWidth / imgHeight;
-    const canvasRatio = trueWidth / trueHeight;
-
-    let cropX = 0;
-    let cropY = 0;
-    let cropWidth = imgWidth;
-    let cropHeight = imgHeight;
-
-    if (imgRatio > canvasRatio) {
-      cropWidth = imgHeight * canvasRatio;
-      cropX = (imgWidth - cropWidth) / 2;
-    } else {
-      cropHeight = imgWidth / canvasRatio;
-      cropY = (imgHeight - cropHeight) / 2;
+  const handleReset = useCallback(() => {
+    if (!window.confirm('Start over and clear this flyer?')) return;
+    if (uploadedUrlRef.current) {
+      URL.revokeObjectURL(uploadedUrlRef.current);
+      uploadedUrlRef.current = null;
     }
-
-    cropData = {
-      x: cropX,
-      y: cropY,
-      width: cropWidth,
-      height: cropHeight,
-    };
-  }
-
-  const queryUsed = fields.title || fields.businessName || fields.productName || type;
-  const currentSizeInfo = FLYER_SIZE_INFO.find((s) => s.key === size);
+    uploadedImageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    uploadedImageUrlsRef.current.clear();
+    selectNodes([]);
+    reset();
+  }, [reset, selectNodes]);
 
   return (
     <div className="h-dvh bg-bone text-graphite flex flex-col md:flex-row relative overflow-hidden">
-      {/* Registration marks */}
-      <span className="reg-mark absolute top-3 right-3 select-none pointer-events-none z-30" />
-      <span className="reg-mark absolute bottom-3 right-3 select-none pointer-events-none z-30" />
+      <div className="absolute top-4 right-4 z-40">
+        <button
+          id="download-btn"
+          onClick={exportFlyer}
+          disabled={!canExport || isExporting}
+          className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all duration-200 border border-transparent font-display ${
+            !canExport || isExporting
+              ? 'bg-graphite/15 text-graphite-muted cursor-not-allowed shadow-none'
+              : 'bg-pencil text-bone hover:bg-pencil/90 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-pencil/15'
+          }`}
+        >
+          {isExporting ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Preparing
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download Flyer
+            </>
+          )}
+        </button>
+      </div>
 
-      {/* Control Sidebar — scrolls internally on desktop */}
-      <div className="w-full md:w-80 bg-bone-light border-b md:border-b-0 md:border-r border-graphite/10 p-6 flex flex-col gap-5 z-10 flex-shrink-0 md:overflow-y-auto md:h-dvh editor-sidebar">
-        <div className="space-y-2">
-          <h1 id="editor-title" className="text-2xl font-bold tracking-tight text-graphite font-display">
-            Design Editor
-          </h1>
-          <p className="text-graphite-muted text-xs">
-            Review size ratios, background layout, and cycle through assets.
-          </p>
+      <aside className="w-full md:w-[22rem] lg:w-96 bg-bone-light border-b md:border-b-0 md:border-r border-nonrepro/25 p-5 flex flex-col gap-5 z-10 flex-shrink-0 md:overflow-y-auto md:h-dvh editor-sidebar">
+        <div className="space-y-1 pr-28 md:pr-0">
+          <h1 className="text-2xl font-bold tracking-tight text-graphite font-display">Greenlight</h1>
+          <p className="text-graphite-muted text-xs">Paste-up flyer editor</p>
         </div>
 
-        <hr className="border-graphite/10" />
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Campaign Type</h2>
+          <div className="flex flex-wrap gap-2">
+            {FLYER_TYPES.map((flyerType) => {
+              const isActive = type === flyerType.key;
+              return (
+                <button
+                  key={flyerType.key}
+                  type="button"
+                  onClick={() => handleTypeChange(flyerType.key)}
+                  className={`flex-1 min-w-[5.75rem] px-3 py-2 rounded-lg text-sm font-semibold border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light ${
+                    isActive
+                      ? 'bg-nonrepro/10 border-nonrepro text-nonrepro shadow-sm'
+                      : 'bg-white border-nonrepro/25 text-graphite-muted hover:text-graphite hover:border-nonrepro/50'
+                  }`}
+                >
+                  {flyerType.label}
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
-        {/* ── Feature 1: Size Switcher ── */}
-        <div className="space-y-3">
-          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display flex items-center">
-            <span className="reg-mark-sm" />
-            Canvas Size
-          </h2>
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Canvas Size</h2>
           <div className="flex gap-1.5">
             {FLYER_SIZE_INFO.map((s) => {
               const isActive = size === s.key;
               return (
                 <button
                   key={s.key}
+                  type="button"
                   onClick={() => handleSizeChange(s.key)}
                   title={s.blurb}
-                  className={`flex-1 flex flex-col items-center gap-0.5 px-2 py-2.5 rounded-lg text-center transition-all duration-200 cursor-pointer border ${
+                  className={`flex-1 flex flex-col items-center gap-0.5 px-2 py-2.5 rounded-lg text-center transition-all duration-200 border ${
                     isActive
-                      ? 'bg-nonrepro/10 border-nonrepro/40 text-nonrepro ring-1 ring-nonrepro/25 shadow-sm'
-                      : 'bg-white border-graphite/10 text-graphite-muted hover:border-graphite/20 hover:text-graphite'
+                      ? 'bg-nonrepro/10 border-nonrepro text-nonrepro ring-1 ring-nonrepro/25 shadow-sm'
+                      : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
                   }`}
                 >
-                  <span className={`text-[11px] font-bold font-display leading-tight ${isActive ? 'text-nonrepro' : ''}`}>
-                    {s.label}
-                  </span>
+                  <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
                   <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
                 </button>
               );
             })}
           </div>
           {currentSizeInfo && (
-            <p className="text-[10px] text-graphite-muted leading-snug pl-0.5">
+            <p className="text-[10px] text-graphite-muted leading-snug">
               <span className="font-mono text-graphite/60">{currentSizeInfo.dimensions}</span>
-              <span className="mx-1.5">—</span>
+              <span className="mx-1.5">/</span>
               {currentSizeInfo.blurb}
             </p>
           )}
-        </div>
+        </section>
 
-        <hr className="border-graphite/10" />
-
-        {/* Campaign Info */}
-        <div className="space-y-3">
-          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display flex items-center">
-            <span className="reg-mark-sm" />
-            Flyer Parameters
-          </h2>
-          <div className="space-y-2.5 bg-white p-3.5 rounded-lg border border-graphite/10 text-sm shadow-sm">
-            <div className="flex justify-between">
-              <span className="text-graphite-muted">Format:</span>
-              <span className="font-semibold text-nonrepro capitalize">{currentSizeInfo?.label ?? size}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-graphite-muted">Type:</span>
-              <span className="font-semibold text-nonrepro capitalize">{type}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-graphite-muted">Resolution:</span>
-              <span className="font-mono text-xs text-graphite">{trueWidth} × {trueHeight} px</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Selected Text Node Details */}
-        {selectedNodeId && (() => {
-          const selectedNode = textNodes.find((n) => n.id === selectedNodeId);
-          if (!selectedNode) return null;
-          return (
-            <div className="space-y-3 animate-in fade-in duration-200">
-              <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display flex items-center">
-                <span className="reg-mark-sm" />
-                Selected Text Node
-              </h2>
-              <div className="space-y-2.5 bg-white p-3.5 rounded-lg border border-graphite/10 text-sm shadow-sm">
-                <div className="flex justify-between">
-                  <span className="text-graphite-muted">Field:</span>
-                  <span className="font-semibold text-pencil">{selectedNode.field}</span>
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Details</h2>
+          <form className="space-y-3" onSubmit={(event) => event.preventDefault()}>
+            {fieldDefinitions.map((field) => {
+              const value = fields[field.key] || '';
+              return (
+                <div key={field.key} className="flex flex-col gap-1.5">
+                  <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
+                    {field.label}
+                  </label>
+                  {field.multiline ? (
+                    <textarea
+                      id={`field-${field.key}`}
+                      name={field.key}
+                      placeholder={field.placeholder}
+                      value={value}
+                      onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                      rows={3}
+                      className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-2.5 text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none resize-y"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      id={`field-${field.key}`}
+                      name={field.key}
+                      placeholder={field.placeholder}
+                      value={value}
+                      onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                      className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-2.5 text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none"
+                    />
+                  )}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-graphite-muted">Position (X, Y):</span>
-                  <span className="font-mono text-xs text-graphite">{Math.round(selectedNode.x)}, {Math.round(selectedNode.y)} px</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-graphite-muted">Width:</span>
-                  <span className="font-mono text-xs text-graphite">{Math.round(selectedNode.width)} px</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-graphite-muted">Font Size:</span>
-                  <span className="font-mono text-xs text-graphite">{selectedNode.fontSize} px</span>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+              );
+            })}
+          </form>
+        </section>
 
-        {/* ── Background Asset Section ── */}
-        <div className="space-y-3">
-          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display flex items-center">
-            <span className="reg-mark-sm" />
-            Background Asset
-          </h2>
-          <div className="space-y-2.5 bg-white p-3.5 rounded-lg border border-graphite/10 text-sm shadow-sm">
-            <div className="flex justify-between">
-              <span className="text-graphite-muted">Search Query:</span>
-              <span className="font-semibold text-ochre truncate max-w-[140px]" title={queryUsed}>"{queryUsed}"</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-graphite-muted">Available:</span>
-              <span className="font-medium text-graphite">{photos.length} photos</span>
-            </div>
-            {photos.length > 0 && (
-              <div className="flex justify-between">
-                <span className="text-graphite-muted">Index:</span>
-                <span className="font-mono text-xs text-graphite">{currentIndex + 1} of {photos.length}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Shuffle Button */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Background</h2>
           <button
-            onClick={() => {
-              if (photos.length > 1) {
-                shuffle();
-              } else {
-                const query = fields.title || fields.businessName || fields.productName || type;
-                search(query);
-              }
-            }}
-            disabled={isFetchingOrLoading}
+            type="button"
+            onClick={handleShuffle}
+            disabled={primaryBackgroundDisabled}
+            title={primaryBackgroundTitle}
             className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg shadow-sm transition-all duration-200 border font-display ${
-              isFetchingOrLoading
-                ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed border-graphite/10 shadow-none'
-                : 'bg-white text-graphite border-graphite/15 hover:border-nonrepro hover:text-nonrepro hover:scale-[1.02] active:scale-[0.98] cursor-pointer'
+              primaryBackgroundDisabled
+                ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed pointer-events-none border-graphite/10 shadow-none'
+                : isCanvasEmpty
+                  ? 'bg-pencil text-bone border-transparent hover:bg-pencil/90 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-pencil/15'
+                : 'bg-white text-graphite border-nonrepro/25 hover:border-nonrepro hover:text-nonrepro hover:scale-[1.01] active:scale-[0.99] cursor-pointer'
             }`}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12" />
             </svg>
-            Shuffle Background
+            {primaryBackgroundLabel}
           </button>
+          {isCanvasEmpty && !hasDetailsForCreate && (
+            <p className="text-[11px] leading-snug text-graphite-muted">
+              Fill in the details first.
+            </p>
+          )}
 
-          {/* ── Feature 2a: Keyword Search ── */}
           <form onSubmit={handleKeywordSearch} className="flex gap-2">
             <input
               type="text"
               value={searchKeywords}
-              onChange={(e) => setSearchKeywords(e.target.value)}
-              placeholder="Search backgrounds…"
+              onChange={(event) => setSearchKeywords(event.target.value)}
+              placeholder="Search backgrounds..."
               className="flex-1 min-w-0 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg px-3 py-2 text-xs text-graphite placeholder-graphite-muted/50 focus:outline-none transition-all"
             />
             <button
@@ -486,6 +1060,7 @@ export const EditorScreen: React.FC = () => {
                   ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed border-graphite/10'
                   : 'bg-nonrepro/10 text-nonrepro border-nonrepro/25 hover:bg-nonrepro/20 hover:border-nonrepro/40 cursor-pointer'
               }`}
+              aria-label="Search backgrounds"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -493,7 +1068,47 @@ export const EditorScreen: React.FC = () => {
             </button>
           </form>
 
-          {/* ── Feature 2b: Image Upload ── */}
+          {showNoImagesMessage && (
+            <p className="rounded-lg border border-pencil/15 bg-pencil/5 px-3 py-2 text-[11px] leading-snug text-graphite-muted">
+              No images found &mdash; try a different keyword or upload your own.
+            </p>
+          )}
+
+          <div className="space-y-3 rounded-lg border border-graphite/10 bg-white/55 p-3">
+            <label className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-graphite">Background Blur</span>
+                <span className="text-[10px] font-mono text-graphite-muted">{backgroundBlur}px</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={20}
+                step={1}
+                value={backgroundBlur}
+                onChange={(event) => setBackgroundBlur(Number(event.target.value))}
+                className="w-full accent-nonrepro"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-graphite">Background Opacity</span>
+                <span className="text-[10px] font-mono text-graphite-muted">{backgroundOpacity}%</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={backgroundOpacity}
+                onChange={(event) => setBackgroundOpacity(Number(event.target.value))}
+                title="0 = hidden; 50 = normal; 100 = black"
+                className="w-full accent-nonrepro"
+              />
+            </label>
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
@@ -503,307 +1118,378 @@ export const EditorScreen: React.FC = () => {
             id="bg-upload-input"
           />
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg border border-dashed border-graphite/20 text-graphite-muted hover:border-nonrepro hover:text-nonrepro hover:bg-nonrepro/5 transition-all duration-200 cursor-pointer font-display"
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg border border-dashed border-nonrepro/35 text-graphite-muted hover:border-nonrepro hover:text-nonrepro hover:bg-nonrepro/5 transition-all duration-200 cursor-pointer font-display"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            Upload Your Own Image
+            Upload Background
           </button>
-        </div>
 
-        {/* Bottom actions — pushed to bottom */}
-        <div className="mt-auto space-y-2 pt-2">
+          <input
+            ref={imageFileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageFileUpload}
+            className="hidden"
+            id="image-upload-input"
+          />
           <button
-            id="download-btn"
-            onClick={exportFlyer}
-            disabled={isExporting}
-            className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-lg shadow-md transition-all duration-200 border border-transparent font-display ${
-              isExporting
-                ? 'bg-graphite/15 text-graphite-muted cursor-not-allowed shadow-none'
-                : 'bg-pencil text-bone hover:bg-pencil/90 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-pencil/15'
-            }`}
+            type="button"
+            onClick={() => imageFileInputRef.current?.click()}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg border border-dashed border-pencil/35 text-graphite-muted hover:border-pencil hover:text-pencil hover:bg-pencil/5 transition-all duration-200 cursor-pointer font-display"
           >
-            {isExporting ? (
-              <>
-                <svg className="animate-spin h-4 w-4 text-graphite-muted" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Preparing…
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Download Flyer
-              </>
-            )}
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Upload Logo / Image
           </button>
+        </section>
 
-          <Link
-            id="to-details-btn"
-            to="/details"
-            className="w-full inline-flex items-center justify-center px-4 py-2.5 border border-graphite/15 hover:border-graphite/25 text-xs font-semibold rounded-lg text-graphite-muted hover:text-graphite bg-transparent hover:bg-bone transition-all duration-200 cursor-pointer"
-          >
-            ← Back to Details
-          </Link>
+        <div className="mt-auto pt-2">
           <button
             id="start-over-btn"
-            onClick={() => {
-              if (window.confirm('Are you sure you want to start over? This will wipe your design and details.')) {
-                reset();
-                navigate('/', { replace: true });
-              }
-            }}
+            type="button"
+            onClick={handleReset}
             className="w-full inline-flex items-center justify-center px-4 py-2.5 border border-graphite/15 hover:border-pencil/30 hover:text-pencil text-xs font-semibold rounded-lg text-graphite-muted bg-transparent hover:bg-pencil/5 transition-all duration-200 cursor-pointer"
           >
             Start Over
           </button>
         </div>
-      </div>
+      </aside>
 
-      {/* Canvas Workspace — non-repro grid background */}
-      <div className="flex-1 bg-bone flex flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6">
-        
-        {/* Canvas Area Container */}
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 w-full h-full min-h-0 min-w-0">
-          
-          {/* Canvas Scaling Wrapper */}
-          <div className="flex-1 flex items-center justify-center w-full min-h-0" ref={containerRef}>
-            {/* Dynamic Canvas Container */}
-            <div 
-              className="relative border border-graphite/15 rounded-lg overflow-hidden shadow-lg bg-bone-light flex items-center justify-center transition-all duration-300"
-              style={{ width: stageSize.width, height: stageSize.height }}
+      <main className="flex-1 bg-bone flex flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 pt-20 md:p-6">
+        <div className="flex-1 flex items-center justify-center w-full h-full min-h-0 min-w-0" ref={containerRef}>
+          <div
+            className="relative border border-nonrepro/25 rounded-lg overflow-hidden shadow-lg bg-bone-light flex items-center justify-center transition-all duration-300"
+            style={{ width: stageSize.width, height: stageSize.height }}
+            onDragOver={(event) => {
+              if (Array.from(event.dataTransfer.items).some((item) => item.kind === 'file' && item.type.startsWith('image/'))) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'copy';
+              }
+            }}
+            onDrop={(event) => {
+              const file = Array.from(event.dataTransfer.files).find((item) => item.type.startsWith('image/'));
+              if (!file) return;
+
+              event.preventDefault();
+              const bounds = event.currentTarget.getBoundingClientRect();
+              addImageFileAsNode(file, {
+                x: (event.clientX - bounds.left) / scale,
+                y: (event.clientY - bounds.top) / scale,
+              });
+            }}
+          >
+            <Stage
+              ref={stageRef}
+              width={stageSize.width}
+              height={stageSize.height}
+              scaleX={scale}
+              scaleY={scale}
+              onClick={(event) => {
+                const clickedOn = event.target;
+                const stage = event.target.getStage();
+                if (
+                  clickedOn === stage ||
+                  (clickedOn.getClassName && (
+                    clickedOn.getClassName() === 'Image' ||
+                    (clickedOn.getClassName() === 'Rect' && clickedOn.name() !== 'highlight-bg') ||
+                    clickedOn.getClassName() === 'Line'
+                  ))
+                ) {
+                  selectNodes([]);
+                }
+              }}
+              onTap={(event) => {
+                const clickedOn = event.target;
+                const stage = event.target.getStage();
+                if (
+                  clickedOn === stage ||
+                  (clickedOn.getClassName && (
+                    clickedOn.getClassName() === 'Image' ||
+                    (clickedOn.getClassName() === 'Rect' && clickedOn.name() !== 'highlight-bg') ||
+                    clickedOn.getClassName() === 'Line'
+                  ))
+                ) {
+                  selectNodes([]);
+                }
+              }}
             >
-              {/* Konva Stage */}
-              <Stage
-                ref={stageRef}
-                width={stageSize.width}
-                height={stageSize.height}
-                scaleX={scale}
-                scaleY={scale}
-                onClick={(e) => {
-                  const clickedOn = e.target;
-                  const stage = e.target.getStage();
-                  // Don't deselect when clicking highlight-bg rects (they belong to text groups)
-                  if (
-                    clickedOn === stage || 
-                    (clickedOn.getClassName && (
-                      clickedOn.getClassName() === 'Image' || 
-                      (clickedOn.getClassName() === 'Rect' && clickedOn.name() !== 'highlight-bg')
-                    ))
-                  ) {
-                    selectNode(null);
-                  }
-                }}
-                onTap={(e) => {
-                  const clickedOn = e.target;
-                  const stage = e.target.getStage();
-                  if (
-                    clickedOn === stage || 
-                    (clickedOn.getClassName && (
-                      clickedOn.getClassName() === 'Image' || 
-                      (clickedOn.getClassName() === 'Rect' && clickedOn.name() !== 'highlight-bg')
-                    ))
-                  ) {
-                    selectNode(null);
-                  }
-                }}
-              >
-                <Layer>
-                  {/* Fallback solid background color */}
+              <Layer>
+                <Rect x={0} y={0} width={trueWidth} height={trueHeight} fill="#f5efe4" />
+                {showNoImagesMessage && (
+                  <>
+                    <Rect x={0} y={0} width={trueWidth} height={trueHeight} fill="#2D2D2A" />
+                    <KonvaText
+                      text="No background found"
+                      x={0}
+                      y={(trueHeight - 40) / 2}
+                      width={trueWidth}
+                      height={40}
+                      align="center"
+                      verticalAlign="middle"
+                      fontFamily="Inter, Arial, sans-serif"
+                      fontSize={28}
+                      fill="rgba(245, 239, 228, 0.72)"
+                      listening={false}
+                    />
+                  </>
+                )}
+                {!imgElement && !showNoImagesMessage && gridLines.map((line) => (
+                  <Line
+                    key={line.id}
+                    points={line.points}
+                    stroke="#4ea3c9"
+                    strokeWidth={1}
+                    opacity={0.16}
+                    listening={false}
+                  />
+                ))}
+                {imgElement && (
+                  <KonvaImage
+                    ref={backgroundImageRef}
+                    x={0}
+                    y={0}
+                    width={trueWidth}
+                    height={trueHeight}
+                    image={imgElement}
+                    crop={cropData}
+                    filters={backgroundBlur > 0 ? [Konva.Filters.Blur] : []}
+                    blurRadius={backgroundBlur}
+                    opacity={backgroundImageOpacity}
+                  />
+                )}
+                {imgElement && backgroundDarkOverlayOpacity > 0 && (
                   <Rect
                     x={0}
                     y={0}
                     width={trueWidth}
                     height={trueHeight}
-                    fill="#1e293b"
+                    fill="#000000"
+                    opacity={backgroundDarkOverlayOpacity}
+                    listening={false}
                   />
-                  {imgElement && (
-                    <KonvaImage
-                      x={0}
-                      y={0}
-                      width={trueWidth}
-                      height={trueHeight}
-                      image={imgElement}
-                      crop={cropData}
+                )}
+              </Layer>
+              <Layer>
+                {imageNodes.map((node) => (
+                  <ImageNodeView
+                    key={node.id}
+                    node={node}
+                    selected={selectedImageNode?.id === node.id}
+                    onSelect={handleImageSelect}
+                    onUpdate={updateImageNode}
+                    onRemove={handleRemoveImageNode}
+                    onReady={handleImageReady}
+                  />
+                ))}
+                {!isExporting && selectedImageNode && (
+                  <Transformer
+                    ref={imageTransformerRef}
+                    rotateEnabled={false}
+                    enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+                    boundBoxFunc={(oldBox, newBox) => {
+                      if (newBox.width < 20 || newBox.height < 20) {
+                        return oldBox;
+                      }
+                      return newBox;
+                    }}
+                  />
+                )}
+              </Layer>
+              {!isExporting && activeGuides.length > 0 && (
+                <Layer listening={false}>
+                  {activeGuides.map((guide) => (
+                    <Line
+                      key={`${guide.orientation}-${guide.position}`}
+                      points={
+                        guide.orientation === 'V'
+                          ? [guide.position, 0, guide.position, trueHeight]
+                          : [0, guide.position, trueWidth, guide.position]
+                      }
+                      stroke={GUIDE_COLOR}
+                      strokeWidth={1}
+                      dash={[4, 4]}
+                      listening={false}
                     />
-                  )}
-                  {textNodes.map((node) => {
-                    const leg = resolveNode(node);
-                    // Compute approximate text height for highlight rect
-                    // Konva Text wraps within node.width, so estimate lines
-                    const lineHeight = node.fontSize * 1.2;
-                    const estimatedLines = Math.max(1, Math.ceil((node.text.length * node.fontSize * 0.55) / Math.max(node.width, 1)));
-                    const textHeight = lineHeight * estimatedLines;
-                    const hlPad = 8;
-                    return (
-                      <Group
-                        key={node.id}
-                        id={node.id}
-                        x={node.x}
-                        y={node.y}
-                        draggable
-                        onClick={(e) => {
-                          e.cancelBubble = true;
-                          selectNode(node.id);
-                        }}
-                        onTap={(e) => {
-                          e.cancelBubble = true;
-                          selectNode(node.id);
-                        }}
-                        onDragEnd={(e) => {
-                          updateNode(node.id, {
-                            x: e.target.x(),
-                            y: e.target.y(),
-                          });
-                        }}
-                        onTransformEnd={(e) => {
-                          const kNode = e.target as any;
-                          const scaleX = kNode.scaleX();
-
-                          kNode.scaleX(1);
-                          kNode.scaleY(1);
-
-                          // Find the text child to read current width/fontSize
-                          const textChild = kNode.findOne('Text');
-                          const currentWidth = textChild ? textChild.width() : node.width;
-                          const currentFontSize = textChild ? textChild.fontSize() : node.fontSize;
-
-                          const newWidth = Math.max(40, currentWidth * scaleX);
-                          const newFontSize = Math.max(8, Math.round(currentFontSize * scaleX));
-
-                          updateNode(node.id, {
-                            x: kNode.x(),
-                            y: kNode.y(),
-                            width: newWidth,
-                            fontSize: newFontSize,
-                          });
-                        }}
-                        onMouseEnter={(e) => {
-                          const stage = e.target.getStage();
-                          if (stage) stage.container().style.cursor = 'move';
-                        }}
-                        onMouseLeave={(e) => {
-                          const stage = e.target.getStage();
-                          if (stage) stage.container().style.cursor = 'default';
-                        }}
-                      >
-                        {/* Highlight background rect (rendered behind text) */}
-                        {leg.highlightEnabled && (
-                          <Rect
-                            name="highlight-bg"
-                            x={-hlPad}
-                            y={-hlPad}
-                            width={node.width + hlPad * 2}
-                            height={textHeight + hlPad * 2}
-                            fill={leg.highlightColor}
-                            opacity={leg.highlightOpacity}
-                            cornerRadius={4}
-                            listening={true}
-                          />
-                        )}
-                        <KonvaText
-                          text={node.text}
-                          fontFamily={node.fontFamily}
-                          fontSize={node.fontSize}
-                          fill={node.fill}
-                          width={node.width}
-                          align="center"
-                          shadowColor={leg.shadowEnabled ? leg.shadowColor : undefined}
-                          shadowBlur={leg.shadowEnabled ? leg.shadowBlur : 0}
-                          shadowOpacity={leg.shadowEnabled ? leg.shadowOpacity : 0}
-                          shadowOffsetX={leg.shadowEnabled ? 1 : 0}
-                          shadowOffsetY={leg.shadowEnabled ? 1 : 0}
-                          shadowEnabled={leg.shadowEnabled}
-                        />
-                      </Group>
-                    );
-                  })}
-                  {selectedNodeId && (
-                    <Transformer
-                      ref={transformerRef}
-                      rotateEnabled={false}
-                      enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
-                      boundBoxFunc={(oldBox, newBox) => {
-                        // Limit resize width to at least 40px
-                        if (newBox.width < 40) {
-                          return oldBox;
-                        }
-                        return newBox;
-                      }}
-                    />
-                  )}
+                  ))}
                 </Layer>
-              </Stage>
-
-              {/* Loading Overlay */}
-              {(isFetchingOrLoading || !fontsLoaded) && (
-                <div className="absolute inset-0 bg-bone/80 flex flex-col items-center justify-center gap-3 backdrop-blur-sm z-20">
-                  <svg className="animate-spin h-8 w-8 text-pencil" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  <span className="text-graphite text-sm font-semibold tracking-wide font-display">
-                    {searchLoading 
-                      ? 'Fetching from Unsplash…' 
-                      : !fontsLoaded 
-                      ? 'Loading typography assets…' 
-                      : 'Loading background image…'}
-                  </span>
-                </div>
               )}
+              <Layer>
+                {textNodes.map((node) => {
+                  const leg = resolveNode(node);
+                  const textHeight = estimateTextHeight(node);
+                  const highlightPad = 8;
 
-              {/* Empty Details Hint Overlay */}
-              {!isFetchingOrLoading && textNodes.length === 0 && (
-                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-bone-light/95 border border-ochre/30 text-graphite px-4 py-2 rounded-lg shadow-md flex items-center gap-2 backdrop-blur-md pointer-events-none z-10 animate-pulse">
-                  <span className="text-ochre text-base">💡</span>
-                  <span className="text-xs font-semibold">Add details to see text on your flyer</span>
-                </div>
-              )}
-            </div>
+                  return (
+                    <Group
+                      key={node.id}
+                      id={node.id}
+                      x={node.x}
+                      y={node.y}
+                      draggable
+                      onClick={(event) => handleTextSelect(event, node.id)}
+                      onTap={(event) => handleTextSelect(event, node.id)}
+                      onDragStart={() => handleTextDragStart(node)}
+                      onDragMove={(event) => handleTextDragMove(event, node)}
+                      onDragEnd={(event) => {
+                        setActiveGuides([]);
+                        updateNode(node.id, {
+                          x: event.target.x(),
+                          y: event.target.y(),
+                        });
+                        dragStartRef.current = null;
+                      }}
+                      onTransform={(event) => handleTextTransform(event, node)}
+                      onTransformEnd={(event) => {
+                        const kNode = event.target as Konva.Group;
+                        const activeAnchor = lastTextTransformAnchorRef.current ?? transformerRef.current?.getActiveAnchor() ?? null;
+
+                        if (activeAnchor && TEXT_SIDE_ANCHORS.has(activeAnchor)) {
+                          handleTextTransform(event, node);
+                          setActiveGuides([]);
+                          lastTextTransformAnchorRef.current = null;
+                          return;
+                        }
+
+                        const scaleX = kNode.scaleX();
+
+                        kNode.scaleX(1);
+                        kNode.scaleY(1);
+
+                        const textChild = kNode.findOne('Text') as Konva.Text | undefined;
+                        const currentFontSize = textChild ? textChild.fontSize() : node.fontSize;
+
+                        updateNode(node.id, {
+                          x: kNode.x(),
+                          y: kNode.y(),
+                          fontSize: Math.max(8, Math.round(currentFontSize * scaleX)),
+                        });
+                        setActiveGuides([]);
+                        lastTextTransformAnchorRef.current = null;
+                      }}
+                      onMouseEnter={(event) => {
+                        const stage = event.target.getStage();
+                        if (stage) stage.container().style.cursor = 'move';
+                      }}
+                      onMouseLeave={(event) => {
+                        const stage = event.target.getStage();
+                        if (stage) stage.container().style.cursor = 'default';
+                      }}
+                    >
+                      {leg.highlightEnabled && (
+                        <Rect
+                          name="highlight-bg"
+                          x={-highlightPad}
+                          y={-highlightPad}
+                          width={node.width + highlightPad * 2}
+                          height={textHeight + highlightPad * 2}
+                          fill={leg.highlightColor}
+                          opacity={leg.highlightOpacity}
+                          cornerRadius={4}
+                        />
+                      )}
+                      <KonvaText
+                        text={node.text}
+                        fontFamily={node.fontFamily}
+                        fontSize={node.fontSize}
+                        fill={node.fill}
+                        width={node.width}
+                        align={node.align ?? 'left'}
+                        shadowColor={leg.shadowEnabled ? leg.shadowColor : undefined}
+                        shadowBlur={leg.shadowEnabled ? leg.shadowBlur : 0}
+                        shadowOpacity={leg.shadowEnabled ? leg.shadowOpacity : 0}
+                        shadowOffsetX={leg.shadowEnabled ? 1 : 0}
+                        shadowOffsetY={leg.shadowEnabled ? 1 : 0}
+                        shadowEnabled={leg.shadowEnabled}
+                      />
+                    </Group>
+                  );
+                })}
+                {!isExporting && selectedNodeIds.length > 1 && selectedNodeIds.map((id) => {
+                  const node = textNodes.find((textNode) => textNode.id === id);
+
+                  if (!node) {
+                    return null;
+                  }
+
+                  const textHeight = estimateTextHeight(node);
+
+                  return (
+                    <Rect
+                      key={`selection-indicator-${id}`}
+                      x={node.x - MULTI_SELECT_INDICATOR_PADDING}
+                      y={node.y - MULTI_SELECT_INDICATOR_PADDING}
+                      width={node.width + MULTI_SELECT_INDICATOR_PADDING * 2}
+                      height={textHeight + MULTI_SELECT_INDICATOR_PADDING * 2}
+                      stroke={GUIDE_COLOR}
+                      strokeWidth={1}
+                      dash={[4, 3]}
+                      opacity={0.9}
+                      listening={false}
+                    />
+                  );
+                })}
+                {selectedNodeIds.length > 0 && (
+                  <Transformer
+                    ref={transformerRef}
+                    rotateEnabled={false}
+                    enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']}
+                    boundBoxFunc={(oldBox, newBox) => {
+                      const minWidth = Math.max(
+                        TEXT_MIN_WIDTH,
+                        ...selectedNodeIds
+                          .map((id) => textNodes.find((node) => node.id === id))
+                          .filter((node): node is TextNode => Boolean(node))
+                          .map(getTextMinWidth)
+                      );
+
+                      if (newBox.width < minWidth) {
+                        return oldBox;
+                      }
+                      return newBox;
+                    }}
+                  />
+                )}
+              </Layer>
+            </Stage>
+
+            {(isFetchingOrLoading || !fontsLoaded) && (
+              <div className="absolute inset-0 bg-bone/80 flex flex-col items-center justify-center gap-3 backdrop-blur-sm z-20">
+                <svg className="animate-spin h-8 w-8 text-pencil" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span className="text-graphite text-sm font-semibold tracking-wide font-display">
+                  {searchLoading ? 'Fetching background...' : !fontsLoaded ? 'Loading typography...' : 'Loading background...'}
+                </span>
+              </div>
+            )}
           </div>
-
-          {/* Friendly search empty / warning message below canvas */}
-          {!bgImageUrl && !isFetchingOrLoading && (
-            <div className="text-center max-w-sm bg-bone-light border border-graphite/10 px-4 py-2.5 rounded-lg shadow-sm z-10 animate-in fade-in duration-200 flex-shrink-0">
-              <p className="text-graphite text-xs font-semibold flex items-center justify-center gap-1.5">
-                <span>⚠️</span>
-                {photos.length === 0 
-                  ? "No background images found — try editing your details or shuffle again"
-                  : "No background image loaded"}
-              </p>
-              {!import.meta.env.VITE_UNSPLASH_ACCESS_KEY && (
-                <p className="text-graphite-muted text-[10px] mt-0.5">
-                  Add VITE_UNSPLASH_ACCESS_KEY to your local .env file to enable automated background searches.
-                </p>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* Text Node Properties Panel */}
-        <div className="flex-shrink-0 z-10 w-full lg:w-auto flex justify-center lg:overflow-y-auto lg:max-h-full">
-          <TextControls />
-        </div>
-      </div>
+        {selectedTextNode && (
+          <div className="flex-shrink-0 z-10 w-full lg:w-auto flex justify-center lg:overflow-y-auto lg:max-h-full">
+            <TextControls />
+          </div>
+        )}
+      </main>
 
-      {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-4 right-4 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300 bg-pencil/95 border border-pencil/40 text-bone px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 backdrop-blur-md">
-          <span className="text-bone/80 text-base">⚠️</span>
           <div className="flex flex-col">
-            <span className="font-semibold text-xs text-bone font-display">Unsplash Error</span>
+            <span className="font-semibold text-xs text-bone font-display">Background Error</span>
             <span className="text-[11px] text-bone/80">{toastMessage}</span>
           </div>
-          <button 
+          <button
+            type="button"
             onClick={() => setToastMessage(null)}
             className="ml-2 text-bone/60 hover:text-bone font-bold text-xs cursor-pointer focus:outline-none"
           >
-            ×
+            x
           </button>
         </div>
       )}

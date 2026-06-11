@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
-export type FlyerType = 'event' | 'service' | 'product';
-export type SizeKey = 'square' | 'portrait' | 'story';
+export type FlyerType = 'event' | 'service' | 'product' | 'sale' | 'realEstate' | 'hiring';
+export type SizeKey = 'square' | 'portrait' | 'story' | 'landscape';
 
 export interface TextNode {
   id: string;
@@ -12,6 +12,7 @@ export interface TextNode {
   fontSize: number;
   fill: string;         // color
   width: number;        // for wrapping/resize
+  align: 'left' | 'center' | 'right';
   // ── Text legibility ──
   shadowEnabled: boolean;     // default true
   shadowColor: string;        // default '#000000'
@@ -22,6 +23,15 @@ export interface TextNode {
   highlightOpacity: number;   // default 0.5
 }
 
+export interface ImageNode {
+  id: string;
+  url: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface FlyerState {
   type: FlyerType | null;
   size: SizeKey;
@@ -29,6 +39,8 @@ export interface FlyerState {
   textNodes: TextNode[];
   bgImageUrl: string | null;
   selectedNodeId: string | null;
+  selectedNodeIds: string[];
+  imageNodes: ImageNode[];
 }
 
 export interface FlyerActions {
@@ -37,7 +49,11 @@ export interface FlyerActions {
   setField: (key: string, value: string) => void;
   setTextNodes: (nodes: TextNode[]) => void;
   updateNode: (id: string, partial: Partial<TextNode>) => void;
+  addImageNode: (node: ImageNode) => void;
+  updateImageNode: (id: string, partial: Partial<ImageNode>) => void;
+  removeImageNode: (id: string) => void;
   selectNode: (id: string | null) => void;
+  selectNodes: (ids: string[]) => void;
   setBgImageUrl: (url: string | null) => void;
   reset: () => void;
 }
@@ -45,12 +61,14 @@ export interface FlyerActions {
 export type FlyerStore = FlyerState & FlyerActions;
 
 const initialState: FlyerState = {
-  type: null,
+  type: 'event',
   size: 'square',
   fields: {},
   textNodes: [],
   bgImageUrl: null,
   selectedNodeId: null,
+  selectedNodeIds: [],
+  imageNodes: [],
 };
 
 export const useFlyerStore = create<FlyerStore>((set) => ({
@@ -72,7 +90,26 @@ export const useFlyerStore = create<FlyerStore>((set) => ({
         node.id === id ? { ...node, ...partial } : node
       ),
     })),
-  selectNode: (id) => set({ selectedNodeId: id }),
+  addImageNode: (node) =>
+    set((state) => ({
+      imageNodes: [...state.imageNodes, node],
+      selectedNodeId: node.id,
+      selectedNodeIds: [],
+    })),
+  updateImageNode: (id, partial) =>
+    set((state) => ({
+      imageNodes: state.imageNodes.map((node) =>
+        node.id === id ? { ...node, ...partial } : node
+      ),
+    })),
+  removeImageNode: (id) =>
+    set((state) => ({
+      imageNodes: state.imageNodes.filter((node) => node.id !== id),
+      selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId,
+      selectedNodeIds: state.selectedNodeId === id ? [] : state.selectedNodeIds,
+    })),
+  selectNode: (id) => set({ selectedNodeId: id, selectedNodeIds: id ? [id] : [] }),
+  selectNodes: (ids) => set({ selectedNodeIds: ids, selectedNodeId: ids.length > 0 ? ids[ids.length - 1] : null }),
   setBgImageUrl: (url) => set({ bgImageUrl: url }),
   reset: () => set(initialState),
 }));

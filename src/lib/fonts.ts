@@ -21,7 +21,7 @@ export const FONTS: FontOption[] = [
  * This prevents Konva canvas from rendering fallback text layouts.
  */
 export async function ensureFontsLoaded(): Promise<void> {
-  const doc = typeof document !== 'undefined' ? (document as any) : null;
+  const doc = typeof document !== 'undefined' ? document : null;
   if (!doc || !doc.fonts) {
     return;
   }

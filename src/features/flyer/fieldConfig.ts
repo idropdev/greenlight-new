@@ -29,4 +29,25 @@ export const fieldConfig: Record<FlyerType, FieldDefinition[]> = {
     { key: 'callToAction', label: 'Call to Action', placeholder: 'e.g. Order now at ultrafit.com', multiline: false },
     { key: 'description', label: 'Description', placeholder: 'Highlight key features, technical specifications, and benefits...', multiline: true },
   ],
+  sale: [
+    { key: 'headline', label: 'Sale Headline', placeholder: 'e.g. Summer Clearance Sale', multiline: false },
+    { key: 'discount', label: 'Discount / Offer', placeholder: 'e.g. Up to 40% off', multiline: false },
+    { key: 'promoCode', label: 'Promo Code', placeholder: 'e.g. Use code SUMMER40', multiline: false },
+    { key: 'validUntil', label: 'Valid Until', placeholder: 'e.g. Ends July 31', multiline: false },
+    { key: 'description', label: 'Description', placeholder: 'Describe what is on sale and why shoppers should act now...', multiline: true },
+  ],
+  realEstate: [
+    { key: 'propertyTitle', label: 'Property Title', placeholder: 'e.g. Modern Downtown Loft', multiline: false },
+    { key: 'price', label: 'Price', placeholder: 'e.g. $625,000', multiline: false },
+    { key: 'address', label: 'Address', placeholder: 'e.g. 123 Main Street, Denver, CO', multiline: false },
+    { key: 'features', label: 'Features', placeholder: 'e.g. 3 bed / 2 bath, mountain views, two-car garage', multiline: true },
+    { key: 'contact', label: 'Contact Info', placeholder: 'e.g. Call Alex at (555) 0142', multiline: false },
+  ],
+  hiring: [
+    { key: 'jobTitle', label: 'Job Title', placeholder: 'e.g. Senior Graphic Designer', multiline: false },
+    { key: 'company', label: 'Company', placeholder: 'e.g. Greenlight Studio', multiline: false },
+    { key: 'location', label: 'Location', placeholder: 'e.g. Remote or Denver, CO', multiline: false },
+    { key: 'payRange', label: 'Pay Range', placeholder: 'e.g. $75k - $95k', multiline: false },
+    { key: 'howToApply', label: 'How to Apply', placeholder: 'e.g. Apply at greenlight.com/careers', multiline: false },
+  ],
 };

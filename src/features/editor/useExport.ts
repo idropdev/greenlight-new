@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import type Konva from 'konva';
 import { useFlyerStore } from '../flyer/flyerStore';
 import { getDimensionsForSize } from '../flyer/sizes';
 
 export function useExport(
-  stageRef: React.RefObject<any>,
-  transformerRef: React.RefObject<any>
+  stageRef: React.RefObject<Konva.Stage | null>,
+  transformerRef: React.RefObject<Konva.Transformer | null>,
+  imageTransformerRef?: React.RefObject<Konva.Transformer | null>
 ) {
   const type = useFlyerStore((state) => state.type);
   const size = useFlyerStore((state) => state.size);
@@ -25,6 +27,10 @@ export function useExport(
       if (transformerRef.current) {
         transformerRef.current.nodes([]);
         transformerRef.current.getLayer()?.draw();
+      }
+      if (imageTransformerRef?.current) {
+        imageTransformerRef.current.nodes([]);
+        imageTransformerRef.current.getLayer()?.draw();
       }
 
       // 3. Force synchronous stage redraw

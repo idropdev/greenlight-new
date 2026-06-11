@@ -2,6 +2,24 @@ import type { FlyerType, SizeKey, TextNode } from './flyerStore';
 import { fieldConfig } from './fieldConfig';
 import { getDimensionsForSize } from './sizes';
 
+const PRIMARY_FIELD_KEYS: Record<FlyerType, string[]> = {
+  event: ['title'],
+  service: ['businessName'],
+  product: ['productName'],
+  sale: ['headline'],
+  realEstate: ['propertyTitle'],
+  hiring: ['jobTitle'],
+};
+
+const DESCRIPTION_FIELD_KEYS: Record<FlyerType, string[]> = {
+  event: ['description'],
+  service: ['description'],
+  product: ['description'],
+  sale: ['description'],
+  realEstate: ['features'],
+  hiring: [],
+};
+
 /**
  * Generates initial TextNode layouts for a flyer type and canvas size based on user fields.
  * Iterates fields in fieldConfig order, skipping any empty/whitespace values.
@@ -38,18 +56,20 @@ export function buildTextNodes(
   // Horizontal boundaries (~80% wrapping width, centered horizontally)
   const nodeWidth = Math.round(width * 0.8);
   const nodeX = Math.round((width - nodeWidth) / 2);
+  const primaryFieldKeys = PRIMARY_FIELD_KEYS[type];
+  const descriptionFieldKeys = DESCRIPTION_FIELD_KEYS[type];
 
   // Group active fields to layout them in their respective zones
   const primaryFields = activeFields.filter((def) =>
-    ['title', 'businessName', 'productName'].includes(def.key)
+    primaryFieldKeys.includes(def.key)
   );
 
   const secondaryFields = activeFields.filter((def) =>
-    !['title', 'businessName', 'productName', 'description'].includes(def.key)
+    !primaryFieldKeys.includes(def.key) && !descriptionFieldKeys.includes(def.key)
   );
 
   const descriptionFields = activeFields.filter((def) =>
-    def.key === 'description'
+    descriptionFieldKeys.includes(def.key)
   );
 
   // 1. Primary field: upper-middle
@@ -66,6 +86,7 @@ export function buildTextNodes(
       fontSize: primaryFontSize,
       fill: '#ffffff',
       width: nodeWidth,
+      align: 'left',
       shadowEnabled: true,
       shadowColor: '#000000',
       shadowBlur: 6,
@@ -90,6 +111,7 @@ export function buildTextNodes(
       fontSize: secondaryFontSize,
       fill: '#ffffff',
       width: nodeWidth,
+      align: 'left',
       shadowEnabled: true,
       shadowColor: '#000000',
       shadowBlur: 6,
@@ -114,6 +136,7 @@ export function buildTextNodes(
       fontSize: descriptionFontSize,
       fill: '#ffffff',
       width: nodeWidth,
+      align: 'left',
       shadowEnabled: true,
       shadowColor: '#000000',
       shadowBlur: 6,

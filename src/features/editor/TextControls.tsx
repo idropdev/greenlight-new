@@ -1,13 +1,25 @@
 import React from 'react';
 import { useFlyerStore } from '../flyer/flyerStore';
+import type { TextNode } from '../flyer/flyerStore';
 import { FONTS } from '../../lib/fonts';
+
+const ALIGN_OPTIONS = [
+  { value: 'left', label: 'L', title: 'Align left' },
+  { value: 'center', label: 'C', title: 'Align center' },
+  { value: 'right', label: 'R', title: 'Align right' },
+] as const;
 
 export const TextControls: React.FC = () => {
   const selectedNodeId = useFlyerStore((state) => state.selectedNodeId);
+  const selectedNodeIds = useFlyerStore((state) => state.selectedNodeIds);
   const textNodes = useFlyerStore((state) => state.textNodes);
   const updateNode = useFlyerStore((state) => state.updateNode);
 
   const node = textNodes.find((n) => n.id === selectedNodeId);
+  const updateSelectedNodes = (partial: Partial<TextNode>) => {
+    const targetIds = selectedNodeIds.length > 1 ? selectedNodeIds : node ? [node.id] : [];
+    targetIds.forEach((id) => updateNode(id, partial));
+  };
 
   // If no node is selected, render a subtle instructions card placeholder
   if (!selectedNodeId || !node) {
@@ -38,9 +50,6 @@ export const TextControls: React.FC = () => {
             {node.field} Properties
           </h3>
         </div>
-        <span className="text-[10px] font-mono text-graphite-muted bg-white border border-graphite/10 px-2.5 py-1 rounded-lg">
-          ID: {node.id}
-        </span>
       </div>
 
       {/* Control: Text content */}
@@ -65,7 +74,7 @@ export const TextControls: React.FC = () => {
         <div className="relative">
           <select
             value={node.fontFamily}
-            onChange={(e) => updateNode(node.id, { fontFamily: e.target.value })}
+            onChange={(e) => updateSelectedNodes({ fontFamily: e.target.value })}
             style={{ fontFamily: node.fontFamily }}
             className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg p-3 text-sm text-graphite focus:outline-none transition-all cursor-pointer appearance-none pr-10"
           >
@@ -100,7 +109,7 @@ export const TextControls: React.FC = () => {
             min="8"
             max="200"
             value={node.fontSize}
-            onChange={(e) => updateNode(node.id, { fontSize: parseInt(e.target.value) || 12 })}
+            onChange={(e) => updateSelectedNodes({ fontSize: parseInt(e.target.value) || 12 })}
             className="flex-1 h-1 bg-nonrepro/20 rounded-lg appearance-none cursor-pointer"
           />
           <input
@@ -110,10 +119,39 @@ export const TextControls: React.FC = () => {
             value={node.fontSize}
             onChange={(e) => {
               const val = Math.min(200, Math.max(8, parseInt(e.target.value) || 8));
-              updateNode(node.id, { fontSize: val });
+              updateSelectedNodes({ fontSize: val });
             }}
             className="w-16 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg p-2.5 text-xs text-graphite font-mono text-center focus:outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
+        </div>
+      </div>
+
+      {/* Control: Alignment */}
+      <div className="flex flex-col gap-2">
+        <label className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">
+          Alignment
+        </label>
+        <div className="grid grid-cols-3 gap-2">
+          {ALIGN_OPTIONS.map((option) => {
+            const isActive = (node.align ?? 'left') === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                title={option.title}
+                aria-pressed={isActive}
+                onClick={() => updateSelectedNodes({ align: option.value })}
+                className={`h-9 rounded-lg border text-xs font-bold font-display transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light ${
+                  isActive
+                    ? 'bg-nonrepro/10 border-nonrepro text-nonrepro shadow-sm'
+                    : 'bg-white border-graphite/15 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -127,7 +165,7 @@ export const TextControls: React.FC = () => {
             <input
               type="color"
               value={node.fill}
-              onChange={(e) => updateNode(node.id, { fill: e.target.value })}
+              onChange={(e) => updateSelectedNodes({ fill: e.target.value })}
               className="absolute inset-0 w-[200%] h-[200%] -translate-x-1/4 -translate-y-1/4 cursor-pointer border-0 p-0"
             />
           </div>
@@ -137,9 +175,9 @@ export const TextControls: React.FC = () => {
               type="text"
               value={node.fill.replace('#', '')}
               onChange={(e) => {
-                let hex = e.target.value;
+                const hex = e.target.value;
                 if (/^[0-9A-Fa-f]{0,6}$/.test(hex)) {
-                  updateNode(node.id, { fill: `#${hex}` });
+                  updateSelectedNodes({ fill: `#${hex}` });
                 }
               }}
               placeholder="FFFFFF"
@@ -161,7 +199,7 @@ export const TextControls: React.FC = () => {
           <span className="text-sm font-medium text-graphite">Drop Shadow</span>
           <button
             type="button"
-            onClick={() => updateNode(node.id, { shadowEnabled: !(node.shadowEnabled ?? true) })}
+            onClick={() => updateSelectedNodes({ shadowEnabled: !(node.shadowEnabled ?? true) })}
             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
               (node.shadowEnabled ?? true) ? 'bg-nonrepro' : 'bg-graphite/20'
             }`}
@@ -180,7 +218,7 @@ export const TextControls: React.FC = () => {
             <span className="text-sm font-medium text-graphite">Highlight Box</span>
             <button
               type="button"
-              onClick={() => updateNode(node.id, { highlightEnabled: !(node.highlightEnabled ?? false) })}
+              onClick={() => updateSelectedNodes({ highlightEnabled: !(node.highlightEnabled ?? false) })}
               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                 (node.highlightEnabled ?? false) ? 'bg-nonrepro' : 'bg-graphite/20'
               }`}
@@ -201,7 +239,7 @@ export const TextControls: React.FC = () => {
                   <input
                     type="color"
                     value={node.highlightColor ?? '#000000'}
-                    onChange={(e) => updateNode(node.id, { highlightColor: e.target.value })}
+                    onChange={(e) => updateSelectedNodes({ highlightColor: e.target.value })}
                     className="absolute inset-0 w-[200%] h-[200%] -translate-x-1/4 -translate-y-1/4 cursor-pointer border-0 p-0"
                   />
                 </div>
@@ -214,7 +252,7 @@ export const TextControls: React.FC = () => {
                   max="1"
                   step="0.05"
                   value={node.highlightOpacity ?? 0.5}
-                  onChange={(e) => updateNode(node.id, { highlightOpacity: parseFloat(e.target.value) })}
+                  onChange={(e) => updateSelectedNodes({ highlightOpacity: parseFloat(e.target.value) })}
                   className="flex-1 h-1 bg-nonrepro/20 rounded-lg appearance-none cursor-pointer"
                 />
               </div>

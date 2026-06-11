@@ -9,6 +9,7 @@ export const FLYER_DIMENSIONS: Record<SizeKey, Dimensions> = {
   square: { width: 1080, height: 1080 },
   portrait: { width: 1080, height: 1350 },
   story: { width: 1080, height: 1920 },
+  landscape: { width: 1080, height: 566 },
 };
 
 /**
@@ -55,5 +56,13 @@ export const FLYER_SIZE_INFO: SizeInfo[] = [
     aspect: '9:16',
     blurb: 'Best for Stories & Reels (full-screen vertical)',
     ratioClass: 'w-10 h-[70px]',
+  },
+  {
+    key: 'landscape',
+    label: 'Landscape',
+    dimensions: '1080 × 566',
+    aspect: '1.91:1',
+    blurb: 'Wide feed posts & link previews (1.91:1)',
+    ratioClass: 'w-14 h-7',
   },
 ];

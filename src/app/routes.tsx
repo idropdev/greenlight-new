@@ -1,19 +1,21 @@
-import { createBrowserRouter } from 'react-router-dom';
-import { SetupScreen } from '../screens/SetupScreen';
-import { DetailsScreen } from '../screens/DetailsScreen';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { EditorScreen } from '../screens/EditorScreen';
 
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <SetupScreen />,
+    element: <EditorScreen />,
+  },
+  {
+    path: '/setup',
+    element: <Navigate to="/" replace />,
   },
   {
     path: '/details',
-    element: <DetailsScreen />,
+    element: <Navigate to="/" replace />,
   },
   {
     path: '/editor',
-    element: <EditorScreen />,
+    element: <Navigate to="/" replace />,
   },
 ]);
