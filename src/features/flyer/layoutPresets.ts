@@ -1,6 +1,7 @@
 import type { FlyerType, SizeKey, TextNode } from './flyerStore';
 import { fieldConfig } from './fieldConfig';
 import { getDimensionsForSize } from './sizes';
+import { formatFieldValue } from '../../lib/formatters';
 
 const PRIMARY_FIELD_KEYS: Record<FlyerType, string[]> = {
   event: ['title'],
@@ -79,7 +80,7 @@ export function buildTextNodes(
     nodes.push({
       id: def.key,
       field: def.key,
-      text: val,
+      text: formatFieldValue(def.key, val),
       x: nodeX,
       y,
       fontFamily: 'Inter, system-ui, sans-serif',
@@ -104,7 +105,7 @@ export function buildTextNodes(
     nodes.push({
       id: def.key,
       field: def.key,
-      text: val,
+      text: formatFieldValue(def.key, val),
       x: nodeX,
       y,
       fontFamily: 'Inter, system-ui, sans-serif',
@@ -129,7 +130,7 @@ export function buildTextNodes(
     nodes.push({
       id: def.key,
       field: def.key,
-      text: val,
+      text: formatFieldValue(def.key, val),
       x: nodeX,
       y,
       fontFamily: 'Inter, system-ui, sans-serif',

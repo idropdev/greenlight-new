@@ -11,6 +11,7 @@ import { useUnsplashSearch } from '../../features/unsplash/useUnsplashSearch';
 import { TextControls } from '../../features/editor/TextControls';
 import { useExport } from '../../features/editor/useExport';
 import { ensureFontsLoaded } from '../../lib/fonts';
+import { formatFieldValue } from '../../lib/formatters';
 
 const FLYER_TYPES: Array<{ key: FlyerType; label: string }> = [
   { key: 'event', label: 'Event' },
@@ -570,7 +571,7 @@ export const EditorScreen: React.FC = () => {
     setField(key, value);
     const matchingNode = textNodes.find((node) => node.field === key);
     if (matchingNode) {
-      updateNode(matchingNode.id, { text: value });
+      updateNode(matchingNode.id, { text: formatFieldValue(key, value) });
     }
   }, [setField, textNodes, updateNode]);
 
@@ -631,7 +632,7 @@ export const EditorScreen: React.FC = () => {
     if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
       try {
         window.navigator.vibrate(50);
-      } catch (e) {
+      } catch {
         // ignore vibration issues
       }
     }
@@ -1510,7 +1511,7 @@ export const EditorScreen: React.FC = () => {
                         <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
                           {field.label}
                         </label>
-                        {field.multiline ? (
+                        {field.inputType === 'textarea' || (field.inputType === undefined && field.multiline) ? (
                           <textarea
                             id={`field-${field.key}`}
                             name={field.key}
@@ -1519,6 +1520,26 @@ export const EditorScreen: React.FC = () => {
                             onChange={(event) => handleFieldChange(field.key, event.target.value)}
                             rows={3}
                             className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none resize-y min-h-[44px]"
+                          />
+                        ) : field.inputType === 'date' ? (
+                          <input
+                            type="date"
+                            id={`field-${field.key}`}
+                            name={field.key}
+                            placeholder={field.placeholder}
+                            value={value}
+                            onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                            className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
+                          />
+                        ) : field.inputType === 'time' ? (
+                          <input
+                            type="time"
+                            id={`field-${field.key}`}
+                            name={field.key}
+                            placeholder={field.placeholder}
+                            value={value}
+                            onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                            className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
                           />
                         ) : (
                           <input
