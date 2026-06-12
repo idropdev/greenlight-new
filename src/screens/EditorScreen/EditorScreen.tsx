@@ -47,7 +47,6 @@ type NodeBounds = {
 const SNAP_THRESHOLD = 6;
 const GUIDE_COLOR = '#7FA8D8';
 const TEXT_MIN_WIDTH = 40;
-const MULTI_SELECT_INDICATOR_PADDING = 4;
 const TEXT_SIDE_ANCHORS = new Set(['middle-left', 'middle-right']);
 
 function hasRequiredDetails(type: FlyerType | null, fields: Record<string, string>) {
@@ -334,6 +333,19 @@ export const EditorScreen: React.FC = () => {
   } | null>(null);
   const lastTextTransformAnchorRef = useRef<string | null>(null);
 
+  const longPressTimeoutRef = useRef<Record<string, number>>({});
+  const isLongPressActiveRef = useRef<Record<string, boolean>>({});
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const justLongPressedRef = useRef(false);
+  const pinchStateRef = useRef<{
+    initialDistance: number;
+    initialFontSize: number;
+    initialX: number;
+    initialY: number;
+    initialMidpoint: { x: number; y: number };
+    nodeId: string;
+  } | null>(null);
+
   const { search, autoSearch, shuffle, isLoading: searchLoading, error: searchError, photos, noResults } = useUnsplashSearch();
   const [imgElement, imgStatus] = useImage(bgImageUrl);
   const { exportFlyer, isExporting } = useExport(stageRef, transformerRef, imageTransformerRef);
@@ -368,6 +380,7 @@ export const EditorScreen: React.FC = () => {
   const [stageSize, setStageSize] = useState({ width: 400, height: 400 });
 
   useEffect(() => {
+    Konva.hitOnDragEnabled = true;
     let active = true;
     ensureFontsLoaded().then(() => {
       if (active) {
@@ -611,6 +624,187 @@ export const EditorScreen: React.FC = () => {
     useFlyerStore.setState({ selectedNodeIds: remainingIds });
   }, [selectNodes]);
 
+  const toggleNodeSelection = useCallback((id: string) => {
+    const current = useFlyerStore.getState();
+    const alreadySelected = current.selectedNodeIds.includes(id);
+
+    if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+      try {
+        window.navigator.vibrate(50);
+      } catch (e) {
+        // ignore vibration issues
+      }
+    }
+
+    if (!alreadySelected) {
+      selectNodes([...current.selectedNodeIds, id]);
+    } else {
+      const remainingIds = current.selectedNodeIds.filter((selectedId) => selectedId !== id);
+      selectNodes(remainingIds);
+    }
+  }, [selectNodes]);
+
+  const handleTouchStartText = useCallback((event: Konva.KonvaEventObject<TouchEvent>, node: TextNode) => {
+    event.evt.preventDefault();
+
+    const touch = event.evt.touches[0];
+    if (!touch) return;
+
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+    isLongPressActiveRef.current[node.id] = false;
+
+    if (longPressTimeoutRef.current[node.id]) {
+      window.clearTimeout(longPressTimeoutRef.current[node.id]);
+    }
+
+    longPressTimeoutRef.current[node.id] = window.setTimeout(() => {
+      isLongPressActiveRef.current[node.id] = true;
+      justLongPressedRef.current = true;
+      toggleNodeSelection(node.id);
+      
+      setTimeout(() => {
+        justLongPressedRef.current = false;
+      }, 300);
+    }, 450);
+  }, [toggleNodeSelection]);
+
+  const handleTouchMoveText = useCallback((event: Konva.KonvaEventObject<TouchEvent>, node: TextNode) => {
+    if (touchStartPosRef.current) {
+      const touch = event.evt.touches[0];
+      if (!touch) return;
+      const dx = touch.clientX - touchStartPosRef.current.x;
+      const dy = touch.clientY - touchStartPosRef.current.y;
+
+      if (Math.hypot(dx, dy) > 10) {
+        if (longPressTimeoutRef.current[node.id]) {
+          window.clearTimeout(longPressTimeoutRef.current[node.id]);
+          delete longPressTimeoutRef.current[node.id];
+        }
+      }
+    }
+  }, []);
+
+  const handleTouchEndText = useCallback((_event: Konva.KonvaEventObject<TouchEvent>, node: TextNode) => {
+    if (longPressTimeoutRef.current[node.id]) {
+      window.clearTimeout(longPressTimeoutRef.current[node.id]);
+      delete longPressTimeoutRef.current[node.id];
+    }
+    isLongPressActiveRef.current[node.id] = false;
+  }, []);
+
+  const handleTouchStart = useCallback((event: Konva.KonvaEventObject<TouchEvent>) => {
+    if (event.evt.touches.length === 2 && selectedNodeIds.length === 1) {
+      const selectedId = selectedNodeIds[0];
+      const node = textNodes.find((n) => n.id === selectedId);
+      if (node) {
+        const stage = stageRef.current;
+        if (!stage) return;
+        
+        const rect = stage.container().getBoundingClientRect();
+        const touch1 = event.evt.touches[0];
+        const touch2 = event.evt.touches[1];
+        
+        const p1 = { x: (touch1.clientX - rect.left) / scale, y: (touch1.clientY - rect.top) / scale };
+        const p2 = { x: (touch2.clientX - rect.left) / scale, y: (touch2.clientY - rect.top) / scale };
+        
+        const bounds = getNodeBounds(node);
+        const isNearNode = (p: { x: number; y: number }) => {
+          const pad = 40;
+          return (
+            p.x >= bounds.left - pad &&
+            p.x <= bounds.right + pad &&
+            p.y >= bounds.top - pad &&
+            p.y <= bounds.bottom + pad
+          );
+        };
+        
+        if (isNearNode(p1) || isNearNode(p2)) {
+          event.evt.preventDefault();
+          const initialDistance = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
+          const initialMidpoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+          
+          pinchStateRef.current = {
+            initialDistance,
+            initialFontSize: node.fontSize,
+            initialX: node.x,
+            initialY: node.y,
+            initialMidpoint,
+            nodeId: node.id,
+          };
+        }
+      }
+    }
+  }, [selectedNodeIds, textNodes, scale]);
+
+  const handleTouchMove = useCallback((event: Konva.KonvaEventObject<TouchEvent>) => {
+    if (pinchStateRef.current) {
+      event.evt.preventDefault();
+      
+      const touch1 = event.evt.touches[0];
+      const touch2 = event.evt.touches[1];
+      if (!touch1 || !touch2) return;
+      
+      const currentDistance = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
+      const initialDistance = pinchStateRef.current.initialDistance;
+      
+      if (initialDistance > 0) {
+        let scaleFactor = currentDistance / initialDistance;
+        
+        const minScale = 8 / pinchStateRef.current.initialFontSize;
+        if (scaleFactor < minScale) {
+          scaleFactor = minScale;
+        }
+        
+        const stage = stageRef.current;
+        const groupNode = stage?.findOne('#' + pinchStateRef.current.nodeId) as Konva.Group | undefined;
+        
+        if (groupNode) {
+          const state = pinchStateRef.current;
+          const x_new = state.initialMidpoint.x + (state.initialX - state.initialMidpoint.x) * scaleFactor;
+          const y_new = state.initialMidpoint.y + (state.initialY - state.initialMidpoint.y) * scaleFactor;
+          
+          groupNode.scale({ x: scaleFactor, y: scaleFactor });
+          groupNode.position({ x: x_new, y: y_new });
+          
+          if (transformerRef.current) {
+            transformerRef.current.forceUpdate();
+          }
+          
+          groupNode.getLayer()?.batchDraw();
+        }
+      }
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback((event: Konva.KonvaEventObject<TouchEvent>) => {
+    if (pinchStateRef.current) {
+      event.evt.preventDefault();
+      
+      const state = pinchStateRef.current;
+      const stage = stageRef.current;
+      const groupNode = stage?.findOne('#' + state.nodeId) as Konva.Group | undefined;
+      
+      if (groupNode) {
+        const finalScale = groupNode.scaleX();
+        const finalX = groupNode.x();
+        const finalY = groupNode.y();
+        
+        groupNode.scale({ x: 1, y: 1 });
+        groupNode.getLayer()?.batchDraw();
+        
+        const newFontSize = Math.max(8, Math.round(state.initialFontSize * finalScale));
+        
+        updateNode(state.nodeId, {
+          x: finalX,
+          y: finalY,
+          fontSize: newFontSize,
+        });
+      }
+      
+      pinchStateRef.current = null;
+    }
+  }, [updateNode]);
+
   const handleTextDragStart = useCallback((node: TextNode) => {
     const current = useFlyerStore.getState();
     const selectedIds = current.selectedNodeIds.includes(node.id)
@@ -714,7 +908,14 @@ export const EditorScreen: React.FC = () => {
 
       Object.entries(dragStart.nodePositions).forEach(([id, position]) => {
         if (id !== node.id) {
-          updateNode(id, { x: position.x + dx, y: position.y + dy });
+          const stage = draggedNode.getStage();
+          const otherNode = stage?.findOne('#' + id);
+          if (otherNode) {
+            otherNode.position({
+              x: position.x + dx,
+              y: position.y + dy,
+            });
+          }
         }
       });
     }
@@ -778,14 +979,37 @@ export const EditorScreen: React.FC = () => {
     transformedNode.scaleX(1);
     transformedNode.scaleY(1);
 
-    updateNode(node.id, {
-      x: nextX,
-      y: transformedNode.y(),
-      width: Math.round(nextWidth),
-    });
+    const textChild = transformedNode.findOne('Text') as Konva.Text | undefined;
+    if (textChild) {
+      textChild.width(nextWidth);
+    }
+
+    const highlightPad = 8;
+    const highlightBg = transformedNode.findOne('.highlight-bg') as Konva.Rect | undefined;
+    if (highlightBg) {
+      const estimatedHeight = estimateTextHeight({
+        text: node.text,
+        fontSize: node.fontSize,
+        width: nextWidth,
+      });
+      highlightBg.width(nextWidth + highlightPad * 2);
+      highlightBg.height(estimatedHeight + highlightPad * 2);
+    }
+
+    const touchHitArea = transformedNode.findOne('.touch-hit-area') as Konva.Rect | undefined;
+    if (touchHitArea) {
+      const estimatedHeight = estimateTextHeight({
+        text: node.text,
+        fontSize: node.fontSize,
+        width: nextWidth,
+      });
+      touchHitArea.width(nextWidth + 20);
+      touchHitArea.height(estimatedHeight + 20);
+    }
+
     setActiveGuides(guides);
     transformedNode.getLayer()?.batchDraw();
-  }, [textNodes, trueWidth, updateNode]);
+  }, [textNodes, trueWidth]);
 
   const addImageFileAsNode = useCallback((file: File, position?: { x: number; y: number }) => {
     if (!file.type.startsWith('image/')) {
@@ -1461,8 +1685,8 @@ export const EditorScreen: React.FC = () => {
       <main className="flex-1 bg-bone flex flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2">
         <div className="flex-1 flex items-center justify-center w-full h-full min-h-0 min-w-0" ref={containerRef}>
           <div
-            className="relative border border-nonrepro/25 rounded-lg overflow-hidden shadow-lg bg-bone-light flex items-center justify-center transition-all duration-300"
-            style={{ width: stageSize.width, height: stageSize.height }}
+            className="relative border border-nonrepro/25 rounded-lg overflow-hidden shadow-lg bg-bone-light flex items-center justify-center transition-all duration-300 touch-none"
+            style={{ width: stageSize.width, height: stageSize.height, touchAction: 'none' }}
             onDragOver={(event) => {
               if (Array.from(event.dataTransfer.items).some((item) => item.kind === 'file' && item.type.startsWith('image/'))) {
                 event.preventDefault();
@@ -1487,6 +1711,11 @@ export const EditorScreen: React.FC = () => {
               height={stageSize.height}
               scaleX={scale}
               scaleY={scale}
+              style={{ touchAction: 'none' }}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
               onClick={(event) => {
                 const clickedOn = event.target;
                 const stage = event.target.getStage();
@@ -1589,6 +1818,12 @@ export const EditorScreen: React.FC = () => {
                     ref={imageTransformerRef}
                     rotateEnabled={false}
                     enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+                    anchorSize={Math.round(20 / scale)}
+                    anchorStroke="#7FA8D8"
+                    anchorStrokeWidth={Math.max(1, 1.5 / scale)}
+                    anchorFill="#ffffff"
+                    borderStroke="#7FA8D8"
+                    borderStrokeWidth={Math.max(1, 1.5 / scale)}
                     boundBoxFunc={(oldBox, newBox) => {
                       if (newBox.width < 20 || newBox.height < 20) {
                         return oldBox;
@@ -1629,16 +1864,48 @@ export const EditorScreen: React.FC = () => {
                       x={node.x}
                       y={node.y}
                       draggable
-                      onClick={(event) => handleTextSelect(event, node.id)}
-                      onTap={(event) => handleTextSelect(event, node.id)}
+                      onClick={(event) => {
+                        if (justLongPressedRef.current) {
+                          event.cancelBubble = true;
+                          return;
+                        }
+                        handleTextSelect(event, node.id);
+                      }}
+                      onTap={(event) => {
+                        if (justLongPressedRef.current) {
+                          event.cancelBubble = true;
+                          return;
+                        }
+                        handleTextSelect(event, node.id);
+                      }}
+                      onTouchStart={(event: Konva.KonvaEventObject<TouchEvent>) => handleTouchStartText(event, node)}
+                      onTouchMove={(event: Konva.KonvaEventObject<TouchEvent>) => handleTouchMoveText(event, node)}
+                      onTouchEnd={(event: Konva.KonvaEventObject<TouchEvent>) => handleTouchEndText(event, node)}
+                      onTouchCancel={(event: Konva.KonvaEventObject<TouchEvent>) => handleTouchEndText(event, node)}
                       onDragStart={() => handleTextDragStart(node)}
                       onDragMove={(event) => handleTextDragMove(event, node)}
                       onDragEnd={(event) => {
                         setActiveGuides([]);
-                        updateNode(node.id, {
-                          x: event.target.x(),
-                          y: event.target.y(),
-                        });
+                        const draggedNode = event.target as Konva.Group;
+                        const dragStart = dragStartRef.current;
+                        
+                        if (dragStart && dragStart.draggedId === node.id) {
+                          const dx = draggedNode.x() - dragStart.draggedX;
+                          const dy = draggedNode.y() - dragStart.draggedY;
+
+                          Object.entries(dragStart.nodePositions).forEach(([id, position]) => {
+                            updateNode(id, {
+                              x: position.x + dx,
+                              y: position.y + dy,
+                            });
+                          });
+                        } else {
+                          updateNode(node.id, {
+                            x: draggedNode.x(),
+                            y: draggedNode.y(),
+                          });
+                        }
+                        
                         dragStartRef.current = null;
                       }}
                       onTransform={(event) => handleTextTransform(event, node)}
@@ -1678,6 +1945,15 @@ export const EditorScreen: React.FC = () => {
                         if (stage) stage.container().style.cursor = 'default';
                       }}
                     >
+                      <Rect
+                        name="touch-hit-area"
+                        x={-10}
+                        y={-10}
+                        width={node.width + 20}
+                        height={textHeight + 20}
+                        fill="rgba(0,0,0,0)"
+                        listening={true}
+                      />
                       {leg.highlightEnabled && (
                         <Rect
                           name="highlight-bg"
@@ -1715,17 +1991,18 @@ export const EditorScreen: React.FC = () => {
                   }
 
                   const textHeight = estimateTextHeight(node);
+                  const nodePadding = Math.max(4, 6 / scale);
 
                   return (
                     <Rect
                       key={`selection-indicator-${id}`}
-                      x={node.x - MULTI_SELECT_INDICATOR_PADDING}
-                      y={node.y - MULTI_SELECT_INDICATOR_PADDING}
-                      width={node.width + MULTI_SELECT_INDICATOR_PADDING * 2}
-                      height={textHeight + MULTI_SELECT_INDICATOR_PADDING * 2}
+                      x={node.x - nodePadding}
+                      y={node.y - nodePadding}
+                      width={node.width + nodePadding * 2}
+                      height={textHeight + nodePadding * 2}
                       stroke={GUIDE_COLOR}
-                      strokeWidth={1}
-                      dash={[4, 3]}
+                      strokeWidth={Math.max(1, 1.5 / scale)}
+                      dash={[4 / scale, 3 / scale]}
                       opacity={0.9}
                       listening={false}
                     />
@@ -1736,6 +2013,12 @@ export const EditorScreen: React.FC = () => {
                     ref={transformerRef}
                     rotateEnabled={false}
                     enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']}
+                    anchorSize={Math.round(20 / scale)}
+                    anchorStroke="#7FA8D8"
+                    anchorStrokeWidth={Math.max(1, 1.5 / scale)}
+                    anchorFill="#ffffff"
+                    borderStroke="#7FA8D8"
+                    borderStrokeWidth={Math.max(1, 1.5 / scale)}
                     boundBoxFunc={(oldBox, newBox) => {
                       const minWidth = Math.max(
                         TEXT_MIN_WIDTH,
