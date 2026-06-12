@@ -349,7 +349,52 @@ export const EditorScreen: React.FC = () => {
 
   const { search, autoSearch, shuffle, isLoading: searchLoading, error: searchError, photos, noResults } = useUnsplashSearch();
   const [imgElement, imgStatus] = useImage(bgImageUrl);
-  const { exportFlyer, isExporting } = useExport(stageRef, transformerRef, imageTransformerRef);
+  const { exportFlyer, isExporting, generatePreviewUrl } = useExport(stageRef, transformerRef, imageTransformerRef);
+
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
+
+  const handleOpenPreview = useCallback(async () => {
+    setIsGeneratingPreview(true);
+    try {
+      const url = await generatePreviewUrl();
+      if (url) {
+        setPreviewUrl(url);
+      }
+    } catch (error) {
+      console.error('Error generating preview:', error);
+    } finally {
+      setIsGeneratingPreview(false);
+    }
+  }, [generatePreviewUrl]);
+
+  const handleClosePreview = useCallback(() => {
+    setPreviewUrl(null);
+  }, []);
+
+  // Lock body scroll when preview overlay is open
+  useEffect(() => {
+    if (previewUrl) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [previewUrl]);
+
+  // Handle Escape key to close preview overlay
+  useEffect(() => {
+    if (!previewUrl) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        handleClosePreview();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewUrl, handleClosePreview]);
 
   const dimensions = getDimensionsForSize(size);
   const { width: trueWidth, height: trueHeight } = dimensions;
@@ -1129,6 +1174,36 @@ export const EditorScreen: React.FC = () => {
     reset();
   }, [reset, selectNodes]);
 
+  const renderPreviewButton = (isMobile: boolean) => (
+    <button
+      id={isMobile ? "preview-btn-mobile" : "preview-btn"}
+      onClick={handleOpenPreview}
+      disabled={isCanvasEmpty || isGeneratingPreview}
+      className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all duration-200 border border-graphite/15 font-display min-h-[44px] md:min-h-0 ${
+        isCanvasEmpty || isGeneratingPreview
+          ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed shadow-none border-transparent'
+          : 'bg-white text-graphite hover:text-pencil hover:border-pencil/30 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-graphite/5'
+      }`}
+    >
+      {isGeneratingPreview ? (
+        <>
+          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Preparing
+        </>
+      ) : (
+        <>
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M16 4h4v4M4 16v4h4M20 16v4h-4" />
+          </svg>
+          {isMobile ? 'Preview' : 'Full View'}
+        </>
+      )}
+    </button>
+  );
+
   const renderDownloadButton = (isMobile: boolean) => (
     <button
       id={isMobile ? "download-btn-mobile" : "download-btn"}
@@ -1167,12 +1242,18 @@ export const EditorScreen: React.FC = () => {
           <span className="text-sm font-bold tracking-tight text-graphite font-display leading-none">Greenlight</span>
           <span className="text-[10px] text-graphite-muted mt-0.5">Paste-up flyer editor</span>
         </div>
-        {renderDownloadButton(true)}
+        <div className="flex items-center gap-2">
+          {renderPreviewButton(true)}
+          {renderDownloadButton(true)}
+        </div>
       </div>
 
       {/* Desktop Download Button Container */}
       <div className="hidden md:block absolute top-4 right-4 z-40">
-        {renderDownloadButton(false)}
+        <div className="flex items-center gap-2">
+          {renderPreviewButton(false)}
+          {renderDownloadButton(false)}
+        </div>
       </div>
 
       <aside className={`w-full md:w-[22rem] lg:w-96 bg-bone-light border-t md:border-t-0 md:border-r border-nonrepro/25 z-30 flex flex-col transition-[height] duration-300 ease-in-out overflow-hidden rounded-t-2xl md:rounded-t-none order-2 md:order-1 ${isExpanded ? 'h-[60dvh]' : 'h-14 md:h-dvh'}`}>
@@ -2093,6 +2174,37 @@ export const EditorScreen: React.FC = () => {
           >
             x
           </button>
+        </div>
+      )}
+
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 md:p-8 bg-graphite/90 backdrop-blur-sm select-none pt-safe pb-safe pl-safe pr-safe"
+          onClick={handleClosePreview}
+        >
+          {/* Close button: visible ✕ button (top corner, finger-sized >= 44px) */}
+          <button
+            type="button"
+            onClick={handleClosePreview}
+            className="absolute top-4 right-4 z-50 flex items-center justify-center w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer border border-white/25 focus:outline-none"
+            aria-label="Close preview"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          {/* Centered Image Wrapper */}
+          <div
+            className="relative max-w-full max-h-[85vh] md:max-h-[90vh] flex items-center justify-center"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <img
+              src={previewUrl}
+              alt="Flyer preview"
+              className="max-w-full max-h-full object-contain shadow-2xl rounded-sm border border-graphite/10"
+            />
+          </div>
         </div>
       )}
     </div>

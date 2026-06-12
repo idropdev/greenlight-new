@@ -13,11 +13,13 @@ export function useExport(
   const selectNode = useFlyerStore((state) => state.selectNode);
   const [isExporting, setIsExporting] = useState(false);
 
-  const exportFlyer = async () => {
+  const generatePreviewUrl = async (): Promise<string | null> => {
     const stage = stageRef.current;
-    if (!stage) return;
+    if (!stage) return null;
 
-    setIsExporting(true);
+    // Record current selection to restore it later
+    const prevSelectedNodeId = useFlyerStore.getState().selectedNodeId;
+    const prevSelectedNodeIds = useFlyerStore.getState().selectedNodeIds;
 
     try {
       // 1. Deselect the active node in state
@@ -51,6 +53,28 @@ export function useExport(
         mimeType: 'image/png',
       });
 
+      return dataUrl;
+    } catch (error) {
+      console.error('Error generating preview URL:', error);
+      return null;
+    } finally {
+      // 6. Restore original selection state
+      if (prevSelectedNodeIds.length > 0) {
+        useFlyerStore.setState({
+          selectedNodeId: prevSelectedNodeId,
+          selectedNodeIds: prevSelectedNodeIds,
+        });
+      }
+    }
+  };
+
+  const exportFlyer = async () => {
+    setIsExporting(true);
+
+    try {
+      const dataUrl = await generatePreviewUrl();
+      if (!dataUrl) return;
+
       // 6. Trigger download
       const link = document.createElement('a');
       link.href = dataUrl;
@@ -68,5 +92,7 @@ export function useExport(
   return {
     exportFlyer,
     isExporting,
+    generatePreviewUrl,
   };
 }
+
