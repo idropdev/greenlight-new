@@ -306,6 +306,16 @@ export const EditorScreen: React.FC = () => {
   const [backgroundOpacity, setBackgroundOpacity] = useState(50);
   const [activeGuides, setActiveGuides] = useState<GuideLine[]>([]);
   const [imageRenderVersion, setImageRenderVersion] = useState(0);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (selectedNodeId) {
+      const handle = setTimeout(() => {
+        setIsExpanded(true);
+      }, 0);
+      return () => clearTimeout(handle);
+    }
+  }, [selectedNodeId]);
 
   const stageRef = useRef<Konva.Stage | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
@@ -451,9 +461,15 @@ export const EditorScreen: React.FC = () => {
   }, [trueWidth, trueHeight]);
 
   useEffect(() => {
+    if (!containerRef.current) return;
     updateScale();
-    window.addEventListener('resize', updateScale);
-    return () => window.removeEventListener('resize', updateScale);
+    const resizeObserver = new ResizeObserver(() => {
+      updateScale();
+    });
+    resizeObserver.observe(containerRef.current);
+    return () => {
+      resizeObserver.disconnect();
+    };
   }, [updateScale]);
 
   const cropData = useMemo(() => {
@@ -888,279 +904,561 @@ export const EditorScreen: React.FC = () => {
     reset();
   }, [reset, selectNodes]);
 
+  const renderDownloadButton = (isMobile: boolean) => (
+    <button
+      id={isMobile ? "download-btn-mobile" : "download-btn"}
+      onClick={exportFlyer}
+      disabled={!canExport || isExporting}
+      className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all duration-200 border border-transparent font-display min-h-[44px] md:min-h-0 ${
+        !canExport || isExporting
+          ? 'bg-graphite/15 text-graphite-muted cursor-not-allowed shadow-none'
+          : 'bg-pencil text-bone hover:bg-pencil/90 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-pencil/15'
+      }`}
+    >
+      {isExporting ? (
+        <>
+          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Preparing
+        </>
+      ) : (
+        <>
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          {isMobile ? 'Download' : 'Download Flyer'}
+        </>
+      )}
+    </button>
+  );
+
   return (
     <div className="h-dvh bg-bone text-graphite flex flex-col md:flex-row relative overflow-hidden">
-      <div className="absolute top-4 right-4 z-40">
-        <button
-          id="download-btn"
-          onClick={exportFlyer}
-          disabled={!canExport || isExporting}
-          className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all duration-200 border border-transparent font-display ${
-            !canExport || isExporting
-              ? 'bg-graphite/15 text-graphite-muted cursor-not-allowed shadow-none'
-              : 'bg-pencil text-bone hover:bg-pencil/90 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-pencil/15'
-          }`}
+      {/* Mobile Top Bar */}
+      <div className="flex md:hidden h-14 bg-bone-light border-b border-nonrepro/25 px-4 items-center justify-between flex-shrink-0 z-40 pt-safe">
+        <div className="flex flex-col">
+          <span className="text-sm font-bold tracking-tight text-graphite font-display leading-none">Greenlight</span>
+          <span className="text-[10px] text-graphite-muted mt-0.5">Paste-up flyer editor</span>
+        </div>
+        {renderDownloadButton(true)}
+      </div>
+
+      {/* Desktop Download Button Container */}
+      <div className="hidden md:block absolute top-4 right-4 z-40">
+        {renderDownloadButton(false)}
+      </div>
+
+      <aside className={`w-full md:w-[22rem] lg:w-96 bg-bone-light border-t md:border-t-0 md:border-r border-nonrepro/25 z-30 flex flex-col transition-[height] duration-300 ease-in-out overflow-hidden rounded-t-2xl md:rounded-t-none order-2 md:order-1 ${isExpanded ? 'h-[60dvh]' : 'h-14 md:h-dvh'}`}>
+        {/* Mobile Drawer Header */}
+        <div 
+          className="flex md:hidden items-center justify-between px-5 h-14 border-b border-nonrepro/15 cursor-pointer select-none flex-shrink-0 bg-bone-light"
+          onClick={() => setIsExpanded(!isExpanded)}
         >
-          {isExporting ? (
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-nonrepro animate-pulse" />
+            <span className="text-sm font-bold tracking-tight text-graphite font-display">
+              {isExpanded ? 'Collapse Editor Controls' : 'Expand Editor Controls'}
+            </span>
+          </div>
+          <button type="button" className="text-graphite-muted focus:outline-none min-h-[44px] min-w-[44px] flex items-center justify-center">
+            <svg className={`w-5 h-5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Scrollable Content Container */}
+        <div className="flex-1 overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-5 editor-sidebar">
+          {/* Title Section (Desktop only) */}
+          <div className="hidden md:block space-y-1">
+            <h1 className="text-2xl font-bold tracking-tight text-graphite font-display">Greenlight</h1>
+            <p className="text-graphite-muted text-xs">Paste-up flyer editor</p>
+          </div>
+
+          {selectedTextNode ? (
             <>
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Preparing
+              {/* On mobile, TextControls lives here inside the drawer. On desktop it lives outside. */}
+              <div className="block md:hidden">
+                <TextControls />
+              </div>
+              {/* On desktop, show normal sidebar controls too. */}
+              <div className="hidden md:flex flex-col gap-5">
+                <section className="space-y-3">
+                  <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Campaign Type</h2>
+                  <div className="flex flex-wrap gap-2">
+                    {FLYER_TYPES.map((flyerType) => {
+                      const isActive = type === flyerType.key;
+                      return (
+                        <button
+                          key={flyerType.key}
+                          type="button"
+                          onClick={() => handleTypeChange(flyerType.key)}
+                          className={`flex-1 min-w-[5.75rem] px-3 py-3 md:py-2 rounded-lg text-base md:text-sm font-semibold border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light min-h-[44px] md:min-h-0 ${
+                            isActive
+                              ? 'bg-nonrepro/10 border-nonrepro text-nonrepro shadow-sm'
+                              : 'bg-white border-nonrepro/25 text-graphite-muted hover:text-graphite hover:border-nonrepro/50'
+                          }`}
+                        >
+                          {flyerType.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="space-y-3">
+                  <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Canvas Size</h2>
+                  <div className="flex gap-1.5">
+                    {FLYER_SIZE_INFO.map((s) => {
+                      const isActive = size === s.key;
+                      return (
+                        <button
+                          key={s.key}
+                          type="button"
+                          onClick={() => handleSizeChange(s.key)}
+                          title={s.blurb}
+                          className={`flex-1 flex flex-col items-center gap-0.5 px-2 py-3 md:py-2.5 rounded-lg text-center transition-all duration-200 border min-h-[44px] md:min-h-0 ${
+                            isActive
+                              ? 'bg-nonrepro/10 border-nonrepro text-nonrepro ring-1 ring-nonrepro/25 shadow-sm'
+                              : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
+                          }`}
+                        >
+                          <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
+                          <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {currentSizeInfo && (
+                    <p className="text-[10px] text-graphite-muted leading-snug">
+                      <span className="font-mono text-graphite/60">{currentSizeInfo.dimensions}</span>
+                      <span className="mx-1.5">/</span>
+                      {currentSizeInfo.blurb}
+                    </p>
+                  )}
+                </section>
+
+                <section className="space-y-3">
+                  <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Details</h2>
+                  <form className="space-y-3" onSubmit={(event) => event.preventDefault()}>
+                    {fieldDefinitions.map((field) => {
+                      const value = fields[field.key] || '';
+                      return (
+                        <div key={field.key} className="flex flex-col gap-1.5">
+                          <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
+                            {field.label}
+                          </label>
+                          {field.multiline ? (
+                            <textarea
+                              id={`field-${field.key}`}
+                              name={field.key}
+                              placeholder={field.placeholder}
+                              value={value}
+                              onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                              rows={3}
+                              className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none resize-y min-h-[44px]"
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              id={`field-${field.key}`}
+                              name={field.key}
+                              placeholder={field.placeholder}
+                              value={value}
+                              onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                              className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </form>
+                </section>
+
+                <section className="space-y-3">
+                  <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Background</h2>
+                  <button
+                    type="button"
+                    onClick={handleShuffle}
+                    disabled={primaryBackgroundDisabled}
+                    title={primaryBackgroundTitle}
+                    className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-base md:text-sm font-semibold rounded-lg shadow-sm transition-all duration-200 border font-display min-h-[44px] md:min-h-0 ${
+                      primaryBackgroundDisabled
+                        ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed pointer-events-none border-graphite/10 shadow-none'
+                        : isCanvasEmpty
+                          ? 'bg-pencil text-bone border-transparent hover:bg-pencil/90 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-pencil/15'
+                        : 'bg-white text-graphite border-nonrepro/25 hover:border-nonrepro hover:text-nonrepro hover:scale-[1.01] active:scale-[0.99] cursor-pointer'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12" />
+                    </svg>
+                    {primaryBackgroundLabel}
+                  </button>
+                  {isCanvasEmpty && !hasDetailsForCreate && (
+                    <p className="text-[11px] leading-snug text-graphite-muted">
+                      Fill in the details first.
+                    </p>
+                  )}
+
+                  <form onSubmit={handleKeywordSearch} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={searchKeywords}
+                      onChange={(event) => setSearchKeywords(event.target.value)}
+                      placeholder="Search backgrounds..."
+                      className="flex-1 min-w-0 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg px-3 py-3 md:py-2 text-base md:text-xs text-graphite placeholder-graphite-muted/50 focus:outline-none transition-all min-h-[44px] md:min-h-0"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isFetchingOrLoading || !searchKeywords.trim()}
+                      className={`inline-flex items-center justify-center px-4 py-3 md:px-3 md:py-2 text-base md:text-xs font-semibold rounded-lg border transition-all duration-200 font-display flex-shrink-0 min-h-[44px] md:min-h-0 ${
+                        isFetchingOrLoading || !searchKeywords.trim()
+                          ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed border-graphite/10'
+                          : 'bg-nonrepro/10 text-nonrepro border-nonrepro/25 hover:bg-nonrepro/20 hover:border-nonrepro/40 cursor-pointer'
+                      }`}
+                      aria-label="Search backgrounds"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </button>
+                  </form>
+
+                  {showNoImagesMessage && (
+                    <p className="rounded-lg border border-pencil/15 bg-pencil/5 px-3 py-2 text-[11px] leading-snug text-graphite-muted">
+                      No images found &mdash; try a different keyword or upload your own.
+                    </p>
+                  )}
+
+                  <div className="space-y-3 rounded-lg border border-graphite/10 bg-white/55 p-3">
+                    <label className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold text-graphite">Background Blur</span>
+                        <span className="text-[10px] font-mono text-graphite-muted">{backgroundBlur}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={20}
+                        step={1}
+                        value={backgroundBlur}
+                        onChange={(event) => setBackgroundBlur(Number(event.target.value))}
+                        className="w-full accent-nonrepro py-3 md:py-1.5"
+                      />
+                    </label>
+
+                    <label className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold text-graphite">Background Opacity</span>
+                        <span className="text-[10px] font-mono text-graphite-muted">{backgroundOpacity}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={backgroundOpacity}
+                        onChange={(event) => setBackgroundOpacity(Number(event.target.value))}
+                        title="0 = hidden; 50 = normal; 100 = black"
+                        className="w-full accent-nonrepro py-3 md:py-1.5"
+                      />
+                    </label>
+                  </div>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="bg-upload-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm md:text-xs font-semibold rounded-lg border border-dashed border-nonrepro/35 text-graphite-muted hover:border-nonrepro hover:text-nonrepro hover:bg-nonrepro/5 transition-all duration-200 cursor-pointer font-display min-h-[44px] md:min-h-0"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Upload Background
+                  </button>
+
+                  <input
+                    ref={imageFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageFileUpload}
+                    className="hidden"
+                    id="image-upload-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => imageFileInputRef.current?.click()}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm md:text-xs font-semibold rounded-lg border border-dashed border-pencil/35 text-graphite-muted hover:border-pencil hover:text-pencil hover:bg-pencil/5 transition-all duration-200 cursor-pointer font-display min-h-[44px] md:min-h-0"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Upload Logo / Image
+                  </button>
+                </section>
+
+                <div className="mt-auto pt-2">
+                  <button
+                    id="start-over-btn"
+                    type="button"
+                    onClick={handleReset}
+                    className="w-full inline-flex items-center justify-center px-4 py-3 md:py-2.5 border border-graphite/15 hover:border-pencil/30 hover:text-pencil text-sm md:text-xs font-semibold rounded-lg text-graphite-muted bg-transparent hover:bg-pencil/5 transition-all duration-200 cursor-pointer min-h-[44px] md:min-h-0"
+                  >
+                    Start Over
+                  </button>
+                </div>
+              </div>
             </>
           ) : (
             <>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Download Flyer
+              <section className="space-y-3">
+                <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Campaign Type</h2>
+                <div className="flex flex-wrap gap-2">
+                  {FLYER_TYPES.map((flyerType) => {
+                    const isActive = type === flyerType.key;
+                    return (
+                      <button
+                        key={flyerType.key}
+                        type="button"
+                        onClick={() => handleTypeChange(flyerType.key)}
+                        className={`flex-1 min-w-[5.75rem] px-3 py-3 md:py-2 rounded-lg text-base md:text-sm font-semibold border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light min-h-[44px] md:min-h-0 ${
+                          isActive
+                            ? 'bg-nonrepro/10 border-nonrepro text-nonrepro shadow-sm'
+                            : 'bg-white border-nonrepro/25 text-graphite-muted hover:text-graphite hover:border-nonrepro/50'
+                        }`}
+                      >
+                        {flyerType.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Canvas Size</h2>
+                <div className="flex gap-1.5">
+                  {FLYER_SIZE_INFO.map((s) => {
+                    const isActive = size === s.key;
+                    return (
+                      <button
+                        key={s.key}
+                        type="button"
+                        onClick={() => handleSizeChange(s.key)}
+                        title={s.blurb}
+                        className={`flex-1 flex flex-col items-center gap-0.5 px-2 py-3 md:py-2.5 rounded-lg text-center transition-all duration-200 border min-h-[44px] md:min-h-0 ${
+                          isActive
+                            ? 'bg-nonrepro/10 border-nonrepro text-nonrepro ring-1 ring-nonrepro/25 shadow-sm'
+                            : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
+                        }`}
+                      >
+                        <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
+                        <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {currentSizeInfo && (
+                  <p className="text-[10px] text-graphite-muted leading-snug">
+                    <span className="font-mono text-graphite/60">{currentSizeInfo.dimensions}</span>
+                    <span className="mx-1.5">/</span>
+                    {currentSizeInfo.blurb}
+                  </p>
+                )}
+              </section>
+
+              <section className="space-y-3">
+                <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Details</h2>
+                <form className="space-y-3" onSubmit={(event) => event.preventDefault()}>
+                  {fieldDefinitions.map((field) => {
+                    const value = fields[field.key] || '';
+                    return (
+                      <div key={field.key} className="flex flex-col gap-1.5">
+                        <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
+                          {field.label}
+                        </label>
+                        {field.multiline ? (
+                          <textarea
+                            id={`field-${field.key}`}
+                            name={field.key}
+                            placeholder={field.placeholder}
+                            value={value}
+                            onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                            rows={3}
+                            className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none resize-y min-h-[44px]"
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            id={`field-${field.key}`}
+                            name={field.key}
+                            placeholder={field.placeholder}
+                            value={value}
+                            onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                            className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </form>
+              </section>
+
+              <section className="space-y-3">
+                <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Background</h2>
+                <button
+                  type="button"
+                  onClick={handleShuffle}
+                  disabled={primaryBackgroundDisabled}
+                  title={primaryBackgroundTitle}
+                  className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-base md:text-sm font-semibold rounded-lg shadow-sm transition-all duration-200 border font-display min-h-[44px] md:min-h-0 ${
+                    primaryBackgroundDisabled
+                      ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed pointer-events-none border-graphite/10 shadow-none'
+                      : isCanvasEmpty
+                        ? 'bg-pencil text-bone border-transparent hover:bg-pencil/90 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-pencil/15'
+                      : 'bg-white text-graphite border-nonrepro/25 hover:border-nonrepro hover:text-nonrepro hover:scale-[1.01] active:scale-[0.99] cursor-pointer'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12" />
+                  </svg>
+                  {primaryBackgroundLabel}
+                </button>
+                {isCanvasEmpty && !hasDetailsForCreate && (
+                  <p className="text-[11px] leading-snug text-graphite-muted">
+                    Fill in the details first.
+                  </p>
+                )}
+
+                <form onSubmit={handleKeywordSearch} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={searchKeywords}
+                    onChange={(event) => setSearchKeywords(event.target.value)}
+                    placeholder="Search backgrounds..."
+                    className="flex-1 min-w-0 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg px-3 py-3 md:py-2 text-base md:text-xs text-graphite placeholder-graphite-muted/50 focus:outline-none transition-all min-h-[44px] md:min-h-0"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isFetchingOrLoading || !searchKeywords.trim()}
+                    className={`inline-flex items-center justify-center px-4 py-3 md:px-3 md:py-2 text-base md:text-xs font-semibold rounded-lg border transition-all duration-200 font-display flex-shrink-0 min-h-[44px] md:min-h-0 ${
+                      isFetchingOrLoading || !searchKeywords.trim()
+                        ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed border-graphite/10'
+                        : 'bg-nonrepro/10 text-nonrepro border-nonrepro/25 hover:bg-nonrepro/20 hover:border-nonrepro/40 cursor-pointer'
+                    }`}
+                    aria-label="Search backgrounds"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </button>
+                </form>
+
+                {showNoImagesMessage && (
+                  <p className="rounded-lg border border-pencil/15 bg-pencil/5 px-3 py-2 text-[11px] leading-snug text-graphite-muted">
+                    No images found &mdash; try a different keyword or upload your own.
+                  </p>
+                )}
+
+                <div className="space-y-3 rounded-lg border border-graphite/10 bg-white/55 p-3">
+                  <label className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold text-graphite">Background Blur</span>
+                      <span className="text-[10px] font-mono text-graphite-muted">{backgroundBlur}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={20}
+                      step={1}
+                      value={backgroundBlur}
+                      onChange={(event) => setBackgroundBlur(Number(event.target.value))}
+                      className="w-full accent-nonrepro py-3 md:py-1.5"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold text-graphite">Background Opacity</span>
+                      <span className="text-[10px] font-mono text-graphite-muted">{backgroundOpacity}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={backgroundOpacity}
+                      onChange={(event) => setBackgroundOpacity(Number(event.target.value))}
+                      title="0 = hidden; 50 = normal; 100 = black"
+                      className="w-full accent-nonrepro py-3 md:py-1.5"
+                    />
+                  </label>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="bg-upload-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm md:text-xs font-semibold rounded-lg border border-dashed border-nonrepro/35 text-graphite-muted hover:border-nonrepro hover:text-nonrepro hover:bg-nonrepro/5 transition-all duration-200 cursor-pointer font-display min-h-[44px] md:min-h-0"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Upload Background
+                </button>
+
+                <input
+                  ref={imageFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageFileUpload}
+                  className="hidden"
+                  id="image-upload-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => imageFileInputRef.current?.click()}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm md:text-xs font-semibold rounded-lg border border-dashed border-pencil/35 text-graphite-muted hover:border-pencil hover:text-pencil hover:bg-pencil/5 transition-all duration-200 cursor-pointer font-display min-h-[44px] md:min-h-0"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Upload Logo / Image
+                </button>
+              </section>
+
+              <div className="mt-auto pt-2">
+                <button
+                  id="start-over-btn"
+                  type="button"
+                  onClick={handleReset}
+                  className="w-full inline-flex items-center justify-center px-4 py-3 md:py-2.5 border border-graphite/15 hover:border-pencil/30 hover:text-pencil text-sm md:text-xs font-semibold rounded-lg text-graphite-muted bg-transparent hover:bg-pencil/5 transition-all duration-200 cursor-pointer min-h-[44px] md:min-h-0"
+                >
+                  Start Over
+                </button>
+              </div>
             </>
           )}
-        </button>
-      </div>
-
-      <aside className="w-full md:w-[22rem] lg:w-96 bg-bone-light border-b md:border-b-0 md:border-r border-nonrepro/25 p-5 flex flex-col gap-5 z-10 flex-shrink-0 md:overflow-y-auto md:h-dvh editor-sidebar">
-        <div className="space-y-1 pr-28 md:pr-0">
-          <h1 className="text-2xl font-bold tracking-tight text-graphite font-display">Greenlight</h1>
-          <p className="text-graphite-muted text-xs">Paste-up flyer editor</p>
-        </div>
-
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Campaign Type</h2>
-          <div className="flex flex-wrap gap-2">
-            {FLYER_TYPES.map((flyerType) => {
-              const isActive = type === flyerType.key;
-              return (
-                <button
-                  key={flyerType.key}
-                  type="button"
-                  onClick={() => handleTypeChange(flyerType.key)}
-                  className={`flex-1 min-w-[5.75rem] px-3 py-2 rounded-lg text-sm font-semibold border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light ${
-                    isActive
-                      ? 'bg-nonrepro/10 border-nonrepro text-nonrepro shadow-sm'
-                      : 'bg-white border-nonrepro/25 text-graphite-muted hover:text-graphite hover:border-nonrepro/50'
-                  }`}
-                >
-                  {flyerType.label}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Canvas Size</h2>
-          <div className="flex gap-1.5">
-            {FLYER_SIZE_INFO.map((s) => {
-              const isActive = size === s.key;
-              return (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => handleSizeChange(s.key)}
-                  title={s.blurb}
-                  className={`flex-1 flex flex-col items-center gap-0.5 px-2 py-2.5 rounded-lg text-center transition-all duration-200 border ${
-                    isActive
-                      ? 'bg-nonrepro/10 border-nonrepro text-nonrepro ring-1 ring-nonrepro/25 shadow-sm'
-                      : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
-                  }`}
-                >
-                  <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
-                  <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
-                </button>
-              );
-            })}
-          </div>
-          {currentSizeInfo && (
-            <p className="text-[10px] text-graphite-muted leading-snug">
-              <span className="font-mono text-graphite/60">{currentSizeInfo.dimensions}</span>
-              <span className="mx-1.5">/</span>
-              {currentSizeInfo.blurb}
-            </p>
-          )}
-        </section>
-
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Details</h2>
-          <form className="space-y-3" onSubmit={(event) => event.preventDefault()}>
-            {fieldDefinitions.map((field) => {
-              const value = fields[field.key] || '';
-              return (
-                <div key={field.key} className="flex flex-col gap-1.5">
-                  <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
-                    {field.label}
-                  </label>
-                  {field.multiline ? (
-                    <textarea
-                      id={`field-${field.key}`}
-                      name={field.key}
-                      placeholder={field.placeholder}
-                      value={value}
-                      onChange={(event) => handleFieldChange(field.key, event.target.value)}
-                      rows={3}
-                      className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-2.5 text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none resize-y"
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      id={`field-${field.key}`}
-                      name={field.key}
-                      placeholder={field.placeholder}
-                      value={value}
-                      onChange={(event) => handleFieldChange(field.key, event.target.value)}
-                      className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-2.5 text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none"
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </form>
-        </section>
-
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Background</h2>
-          <button
-            type="button"
-            onClick={handleShuffle}
-            disabled={primaryBackgroundDisabled}
-            title={primaryBackgroundTitle}
-            className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg shadow-sm transition-all duration-200 border font-display ${
-              primaryBackgroundDisabled
-                ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed pointer-events-none border-graphite/10 shadow-none'
-                : isCanvasEmpty
-                  ? 'bg-pencil text-bone border-transparent hover:bg-pencil/90 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-pencil/15'
-                : 'bg-white text-graphite border-nonrepro/25 hover:border-nonrepro hover:text-nonrepro hover:scale-[1.01] active:scale-[0.99] cursor-pointer'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12" />
-            </svg>
-            {primaryBackgroundLabel}
-          </button>
-          {isCanvasEmpty && !hasDetailsForCreate && (
-            <p className="text-[11px] leading-snug text-graphite-muted">
-              Fill in the details first.
-            </p>
-          )}
-
-          <form onSubmit={handleKeywordSearch} className="flex gap-2">
-            <input
-              type="text"
-              value={searchKeywords}
-              onChange={(event) => setSearchKeywords(event.target.value)}
-              placeholder="Search backgrounds..."
-              className="flex-1 min-w-0 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg px-3 py-2 text-xs text-graphite placeholder-graphite-muted/50 focus:outline-none transition-all"
-            />
-            <button
-              type="submit"
-              disabled={isFetchingOrLoading || !searchKeywords.trim()}
-              className={`inline-flex items-center justify-center px-3 py-2 text-xs font-semibold rounded-lg border transition-all duration-200 font-display flex-shrink-0 ${
-                isFetchingOrLoading || !searchKeywords.trim()
-                  ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed border-graphite/10'
-                  : 'bg-nonrepro/10 text-nonrepro border-nonrepro/25 hover:bg-nonrepro/20 hover:border-nonrepro/40 cursor-pointer'
-              }`}
-              aria-label="Search backgrounds"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </button>
-          </form>
-
-          {showNoImagesMessage && (
-            <p className="rounded-lg border border-pencil/15 bg-pencil/5 px-3 py-2 text-[11px] leading-snug text-graphite-muted">
-              No images found &mdash; try a different keyword or upload your own.
-            </p>
-          )}
-
-          <div className="space-y-3 rounded-lg border border-graphite/10 bg-white/55 p-3">
-            <label className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-semibold text-graphite">Background Blur</span>
-                <span className="text-[10px] font-mono text-graphite-muted">{backgroundBlur}px</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={20}
-                step={1}
-                value={backgroundBlur}
-                onChange={(event) => setBackgroundBlur(Number(event.target.value))}
-                className="w-full accent-nonrepro"
-              />
-            </label>
-
-            <label className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-semibold text-graphite">Background Opacity</span>
-                <span className="text-[10px] font-mono text-graphite-muted">{backgroundOpacity}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={backgroundOpacity}
-                onChange={(event) => setBackgroundOpacity(Number(event.target.value))}
-                title="0 = hidden; 50 = normal; 100 = black"
-                className="w-full accent-nonrepro"
-              />
-            </label>
-          </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileUpload}
-            className="hidden"
-            id="bg-upload-input"
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg border border-dashed border-nonrepro/35 text-graphite-muted hover:border-nonrepro hover:text-nonrepro hover:bg-nonrepro/5 transition-all duration-200 cursor-pointer font-display"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            Upload Background
-          </button>
-
-          <input
-            ref={imageFileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImageFileUpload}
-            className="hidden"
-            id="image-upload-input"
-          />
-          <button
-            type="button"
-            onClick={() => imageFileInputRef.current?.click()}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg border border-dashed border-pencil/35 text-graphite-muted hover:border-pencil hover:text-pencil hover:bg-pencil/5 transition-all duration-200 cursor-pointer font-display"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Upload Logo / Image
-          </button>
-        </section>
-
-        <div className="mt-auto pt-2">
-          <button
-            id="start-over-btn"
-            type="button"
-            onClick={handleReset}
-            className="w-full inline-flex items-center justify-center px-4 py-2.5 border border-graphite/15 hover:border-pencil/30 hover:text-pencil text-xs font-semibold rounded-lg text-graphite-muted bg-transparent hover:bg-pencil/5 transition-all duration-200 cursor-pointer"
-          >
-            Start Over
-          </button>
         </div>
       </aside>
 
-      <main className="flex-1 bg-bone flex flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 pt-20 md:p-6">
+      <main className="flex-1 bg-bone flex flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2">
         <div className="flex-1 flex items-center justify-center w-full h-full min-h-0 min-w-0" ref={containerRef}>
           <div
             className="relative border border-nonrepro/25 rounded-lg overflow-hidden shadow-lg bg-bone-light flex items-center justify-center transition-all duration-300"
@@ -1472,7 +1770,7 @@ export const EditorScreen: React.FC = () => {
         </div>
 
         {selectedTextNode && (
-          <div className="flex-shrink-0 z-10 w-full lg:w-auto flex justify-center lg:overflow-y-auto lg:max-h-full">
+          <div className="hidden md:flex flex-shrink-0 z-10 w-full lg:w-auto justify-center lg:overflow-y-auto lg:max-h-full">
             <TextControls />
           </div>
         )}

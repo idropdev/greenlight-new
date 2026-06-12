@@ -16,16 +16,32 @@
 }
 
 /* ── Global defaults ── */
-html {
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   font-family: var(--font-body);
   color: var(--color-graphite);
   background-color: var(--color-bone);
-}
-
-body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Safe areas and mobile layout utilities ── */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+.pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+
 
 /* Selection color */
 ::selection {
@@ -144,4 +160,5 @@ input[type="range"]:focus-visible::-moz-range-thumb {
 .editor-sidebar {
   scrollbar-width: thin;
   scrollbar-color: rgba(45, 45, 42, 0.15) transparent;
+  overscroll-behavior-y: contain;
 }

@@ -62,7 +62,7 @@ export const TextControls: React.FC = () => {
           onChange={(e) => updateNode(node.id, { text: e.target.value })}
           rows={3}
           placeholder="Enter text..."
-          className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg p-3 text-sm text-graphite placeholder-graphite-muted/50 focus:outline-none transition-all resize-none leading-relaxed"
+          className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg p-3 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:outline-none transition-all resize-none leading-relaxed min-h-[44px]"
         />
       </div>
 
@@ -76,7 +76,7 @@ export const TextControls: React.FC = () => {
             value={node.fontFamily}
             onChange={(e) => updateSelectedNodes({ fontFamily: e.target.value })}
             style={{ fontFamily: node.fontFamily }}
-            className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg p-3 text-sm text-graphite focus:outline-none transition-all cursor-pointer appearance-none pr-10"
+            className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg py-3 px-3 md:py-2.5 md:px-3 text-base md:text-sm text-graphite focus:outline-none transition-all cursor-pointer appearance-none pr-10 min-h-[44px] md:min-h-0"
           >
             {FONTS.map((font) => (
               <option
@@ -110,18 +110,19 @@ export const TextControls: React.FC = () => {
             max="200"
             value={node.fontSize}
             onChange={(e) => updateSelectedNodes({ fontSize: parseInt(e.target.value) || 12 })}
-            className="flex-1 h-1 bg-nonrepro/20 rounded-lg appearance-none cursor-pointer"
+            className="flex-1 h-1 bg-nonrepro/20 rounded-lg appearance-none cursor-pointer py-3 md:py-1.5"
           />
           <input
             type="number"
             min="8"
             max="200"
+            inputMode="numeric"
             value={node.fontSize}
             onChange={(e) => {
               const val = Math.min(200, Math.max(8, parseInt(e.target.value) || 8));
               updateSelectedNodes({ fontSize: val });
             }}
-            className="w-16 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg p-2.5 text-xs text-graphite font-mono text-center focus:outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            className="w-16 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg p-3 md:p-2.5 text-base md:text-xs text-graphite font-mono text-center focus:outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none min-h-[44px] md:min-h-0"
           />
         </div>
       </div>
@@ -142,7 +143,7 @@ export const TextControls: React.FC = () => {
                 title={option.title}
                 aria-pressed={isActive}
                 onClick={() => updateSelectedNodes({ align: option.value })}
-                className={`h-9 rounded-lg border text-xs font-bold font-display transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light ${
+                className={`h-11 md:h-9 rounded-lg border text-xs font-bold font-display transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light ${
                   isActive
                     ? 'bg-nonrepro/10 border-nonrepro text-nonrepro shadow-sm'
                     : 'bg-white border-graphite/15 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
@@ -161,7 +162,7 @@ export const TextControls: React.FC = () => {
           Text Color
         </label>
         <div className="flex items-center gap-3">
-          <div className="relative w-11 h-11 rounded-lg overflow-hidden border border-graphite/15 flex-shrink-0 bg-white focus-within:ring-1 focus-within:ring-nonrepro focus-within:border-nonrepro transition-all">
+          <div className="relative w-12 h-12 md:w-11 md:h-11 rounded-lg overflow-hidden border border-graphite/15 flex-shrink-0 bg-white focus-within:ring-1 focus-within:ring-nonrepro focus-within:border-nonrepro transition-all">
             <input
               type="color"
               value={node.fill}
@@ -182,7 +183,7 @@ export const TextControls: React.FC = () => {
               }}
               placeholder="FFFFFF"
               maxLength={6}
-              className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg pl-8 pr-3 py-3 text-sm font-mono text-graphite uppercase focus:outline-none transition-all"
+              className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg pl-8 pr-3 py-3 text-base md:text-sm font-mono text-graphite uppercase focus:outline-none transition-all min-h-[44px] md:min-h-0"
             />
           </div>
         </div>
@@ -195,11 +196,17 @@ export const TextControls: React.FC = () => {
         </label>
         
         {/* Shadow Toggle */}
-        <div className="flex items-center justify-between">
+        <div 
+          onClick={() => updateSelectedNodes({ shadowEnabled: !(node.shadowEnabled ?? true) })}
+          className="flex items-center justify-between min-h-[44px] cursor-pointer select-none"
+        >
           <span className="text-sm font-medium text-graphite">Drop Shadow</span>
           <button
             type="button"
-            onClick={() => updateSelectedNodes({ shadowEnabled: !(node.shadowEnabled ?? true) })}
+            onClick={(e) => {
+              e.stopPropagation();
+              updateSelectedNodes({ shadowEnabled: !(node.shadowEnabled ?? true) });
+            }}
             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
               (node.shadowEnabled ?? true) ? 'bg-nonrepro' : 'bg-graphite/20'
             }`}
@@ -213,12 +220,18 @@ export const TextControls: React.FC = () => {
         </div>
 
         {/* Highlight Toggle & Controls */}
-        <div className="flex flex-col gap-3 p-3 bg-white border border-graphite/10 rounded-lg">
-          <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1 p-3 bg-white border border-graphite/10 rounded-lg">
+          <div 
+            onClick={() => updateSelectedNodes({ highlightEnabled: !(node.highlightEnabled ?? false) })}
+            className="flex items-center justify-between min-h-[44px] cursor-pointer select-none"
+          >
             <span className="text-sm font-medium text-graphite">Highlight Box</span>
             <button
               type="button"
-              onClick={() => updateSelectedNodes({ highlightEnabled: !(node.highlightEnabled ?? false) })}
+              onClick={(e) => {
+                e.stopPropagation();
+                updateSelectedNodes({ highlightEnabled: !(node.highlightEnabled ?? false) });
+              }}
               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                 (node.highlightEnabled ?? false) ? 'bg-nonrepro' : 'bg-graphite/20'
               }`}
@@ -235,7 +248,7 @@ export const TextControls: React.FC = () => {
             <div className="flex flex-col gap-3 pt-2 border-t border-graphite/10 mt-1 animate-in fade-in slide-in-from-top-1 duration-200">
               <div className="flex items-center gap-3">
                 <span className="text-xs text-graphite-muted w-12">Color</span>
-                <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-graphite/15 flex-shrink-0 bg-white focus-within:ring-1 focus-within:ring-nonrepro transition-all">
+                <div className="relative w-11 h-11 md:w-8 md:h-8 rounded-lg overflow-hidden border border-graphite/15 flex-shrink-0 bg-white focus-within:ring-1 focus-within:ring-nonrepro transition-all">
                   <input
                     type="color"
                     value={node.highlightColor ?? '#000000'}
@@ -253,7 +266,7 @@ export const TextControls: React.FC = () => {
                   step="0.05"
                   value={node.highlightOpacity ?? 0.5}
                   onChange={(e) => updateSelectedNodes({ highlightOpacity: parseFloat(e.target.value) })}
-                  className="flex-1 h-1 bg-nonrepro/20 rounded-lg appearance-none cursor-pointer"
+                  className="flex-1 h-1 bg-nonrepro/20 rounded-lg appearance-none cursor-pointer py-3 md:py-1.5"
                 />
               </div>
             </div>
