@@ -30,6 +30,7 @@ export interface SizeInfo {
   blurb: string;
   /** Tailwind classes for the aspect-ratio box visual on the Setup screen */
   ratioClass: string;
+  platforms?: string[];
 }
 
 export const FLYER_SIZE_INFO: SizeInfo[] = [
@@ -40,6 +41,7 @@ export const FLYER_SIZE_INFO: SizeInfo[] = [
     aspect: '1:1',
     blurb: 'Best for feed posts (Instagram, Facebook)',
     ratioClass: 'w-10 h-10',
+    platforms: ['instagram', 'facebook'],
   },
   {
     key: 'portrait',
@@ -48,6 +50,7 @@ export const FLYER_SIZE_INFO: SizeInfo[] = [
     aspect: '4:5',
     blurb: 'Best for feed posts that take up more space',
     ratioClass: 'w-10 h-[50px]',
+    platforms: ['instagram'],
   },
   {
     key: 'story',
@@ -56,6 +59,7 @@ export const FLYER_SIZE_INFO: SizeInfo[] = [
     aspect: '9:16',
     blurb: 'Best for Stories & Reels (full-screen vertical)',
     ratioClass: 'w-10 h-[70px]',
+    platforms: ['instagram', 'facebook'],
   },
   {
     key: 'landscape',
@@ -64,5 +68,7 @@ export const FLYER_SIZE_INFO: SizeInfo[] = [
     aspect: '1.91:1',
     blurb: 'Wide feed posts & link previews (1.91:1)',
     ratioClass: 'w-14 h-7',
+    platforms: ['facebook', 'threads', 'youtube'],
   },
 ];
+

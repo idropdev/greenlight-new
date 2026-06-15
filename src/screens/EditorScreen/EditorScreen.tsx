@@ -278,6 +278,77 @@ const ImageNodeView: React.FC<ImageNodeViewProps> = ({ node, selected, onSelect,
   );
 };
 
+function PlatformIcon({ name }: { name: string }) {
+  switch (name) {
+    case 'instagram':
+      return (
+        <svg
+          className="w-3.5 h-3.5 text-current"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+        </svg>
+      );
+    case 'facebook':
+      return (
+        <svg
+          className="w-3.5 h-3.5 text-current"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+        </svg>
+      );
+    case 'threads':
+      return (
+        <svg
+          className="w-3.5 h-3.5 text-current"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="4" />
+          <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94" />
+        </svg>
+      );
+    case 'youtube':
+      return (
+        <svg
+          className="w-3.5 h-3.5 text-current"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z" />
+          <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="currentColor" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 export const EditorScreen: React.FC = () => {
   const type = useFlyerStore((state) => state.type);
   const size = useFlyerStore((state) => state.size);
@@ -1476,12 +1547,19 @@ export const EditorScreen: React.FC = () => {
                           type="button"
                           onClick={() => handleSizeChange(s.key)}
                           title={s.blurb}
-                          className={`flex-1 flex flex-col items-center gap-0.5 px-2 py-3 md:py-2.5 rounded-lg text-center transition-all duration-200 border min-h-[44px] md:min-h-0 ${
+                          className={`flex-1 flex flex-col items-center justify-center gap-1 px-1.5 py-3 md:py-2.5 rounded-lg text-center transition-all duration-200 border min-h-[56px] md:min-h-[48px] ${
                             isActive
                               ? 'bg-nonrepro/10 border-nonrepro text-nonrepro ring-1 ring-nonrepro/25 shadow-sm'
                               : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
                           }`}
                         >
+                          {s.platforms && (
+                            <div className="flex gap-1 items-center justify-center mb-0.5 opacity-80">
+                              {s.platforms.map((plat) => (
+                                <PlatformIcon key={plat} name={plat} />
+                              ))}
+                            </div>
+                          )}
                           <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
                           <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
                         </button>
@@ -1712,12 +1790,19 @@ export const EditorScreen: React.FC = () => {
                         type="button"
                         onClick={() => handleSizeChange(s.key)}
                         title={s.blurb}
-                        className={`flex-1 flex flex-col items-center gap-0.5 px-2 py-3 md:py-2.5 rounded-lg text-center transition-all duration-200 border min-h-[44px] md:min-h-0 ${
+                        className={`flex-1 flex flex-col items-center justify-center gap-1 px-1.5 py-3 md:py-2.5 rounded-lg text-center transition-all duration-200 border min-h-[56px] md:min-h-[48px] ${
                           isActive
                             ? 'bg-nonrepro/10 border-nonrepro text-nonrepro ring-1 ring-nonrepro/25 shadow-sm'
                             : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
                         }`}
                       >
+                        {s.platforms && (
+                          <div className="flex gap-1 items-center justify-center mb-0.5 opacity-80">
+                            {s.platforms.map((plat) => (
+                              <PlatformIcon key={plat} name={plat} />
+                            ))}
+                          </div>
+                        )}
                         <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
                         <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
                       </button>
