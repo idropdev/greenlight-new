@@ -4,10 +4,35 @@ import type { TextNode } from '../flyer/flyerStore';
 import { FONTS, ensureFontsLoaded } from '../../lib/fonts';
 
 const ALIGN_OPTIONS = [
-  { value: 'left', label: 'L', title: 'Align left' },
-  { value: 'center', label: 'C', title: 'Align center' },
-  { value: 'right', label: 'R', title: 'Align right' },
+  { value: 'left', title: 'Align left' },
+  { value: 'center', title: 'Align center' },
+  { value: 'right', title: 'Align right' },
 ] as const;
+
+type AlignValue = (typeof ALIGN_OPTIONS)[number]['value'];
+
+const ALIGN_ICON_PATHS: Record<AlignValue, string[]> = {
+  left: ['M4 6h16', 'M4 10h10', 'M4 14h16', 'M4 18h10'],
+  center: ['M4 6h16', 'M7 10h10', 'M4 14h16', 'M7 18h10'],
+  right: ['M4 6h16', 'M10 10h10', 'M4 14h16', 'M10 18h10'],
+};
+
+const AlignmentIcon: React.FC<{ align: AlignValue }> = ({ align }) => (
+  <svg
+    aria-hidden="true"
+    className="h-4.5 w-4.5"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    {ALIGN_ICON_PATHS[align].map((d) => (
+      <path key={d} d={d} />
+    ))}
+  </svg>
+);
 
 interface TextControlsProps {
   onFontChange?: () => void;
@@ -184,15 +209,16 @@ export const TextControls: React.FC<TextControlsProps> = ({ onFontChange }) => {
                 key={option.value}
                 type="button"
                 title={option.title}
+                aria-label={option.title}
                 aria-pressed={isActive}
                 onClick={() => updateSelectedNodes({ align: option.value })}
-                className={`h-11 md:h-9 rounded-lg border text-xs font-bold font-display transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light ${
+                className={`flex h-11 items-center justify-center rounded-lg border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light md:h-9 ${
                   isActive
                     ? 'bg-nonrepro/10 border-nonrepro text-nonrepro shadow-sm'
                     : 'bg-white border-graphite/15 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
                 }`}
               >
-                {option.label}
+                <AlignmentIcon align={option.value} />
               </button>
             );
           })}
