@@ -1377,7 +1377,7 @@ export const EditorScreen: React.FC = () => {
   return (
     <div
       style={isMobileLayout ? { height: `${viewportHeight}px` } : undefined}
-      className="h-dvh bg-bone text-graphite flex flex-col md:flex-row relative overflow-hidden"
+      className="h-dvh bg-bone text-graphite flex flex-col md:flex-row items-stretch relative overflow-hidden"
     >
       {/* Mobile Top Bar */}
       <div className="flex md:hidden h-14 bg-bone-light border-b border-nonrepro/25 px-4 items-center justify-between flex-shrink-0 z-40 pt-safe">
@@ -1401,9 +1401,11 @@ export const EditorScreen: React.FC = () => {
 
       <aside
         className={`w-full md:w-[22rem] lg:w-96 bg-bone-light border-t md:border-t-0 md:border-r border-nonrepro/25 z-30 flex flex-col overflow-hidden rounded-t-2xl md:rounded-t-none order-2 md:order-1 ${
-          isMobileLayout && isKeyboardOpen
-            ? 'flex-1 min-h-0 h-auto transition-none'
-            : `transition-[height] duration-300 ease-in-out ${isExpanded ? 'h-[60dvh]' : 'h-14 md:h-dvh'}`
+          isMobileLayout
+            ? isKeyboardOpen
+              ? 'flex-1 min-h-0 h-auto transition-none'
+              : `transition-[height] duration-300 ease-in-out ${isExpanded ? 'h-[60dvh]' : 'h-14'}`
+            : 'md:h-dvh'
         }`}
       >
         {/* Mobile Drawer Header */}
@@ -1425,7 +1427,7 @@ export const EditorScreen: React.FC = () => {
         </div>
 
         {/* Scrollable Content Container */}
-        <div className="flex-1 overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-5 editor-sidebar">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-5 editor-sidebar">
           {/* Title Section (Desktop only) */}
           <div className="hidden md:block space-y-1">
             <h1 className="text-2xl font-bold tracking-tight text-graphite font-display">Greenlight</h1>
