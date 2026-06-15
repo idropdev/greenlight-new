@@ -10,7 +10,7 @@ import { buildTextNodes } from '../../features/flyer/layoutPresets';
 import { useUnsplashSearch } from '../../features/unsplash/useUnsplashSearch';
 import { TextControls } from '../../features/editor/TextControls';
 import { useExport } from '../../features/editor/useExport';
-import { ensureFontsLoaded } from '../../lib/fonts';
+import { ensureFontsLoaded, FONTS } from '../../lib/fonts';
 import { formatFieldValue } from '../../lib/formatters';
 
 const FLYER_TYPES: Array<{ key: FlyerType; label: string }> = [
@@ -310,12 +310,15 @@ export const EditorScreen: React.FC = () => {
 
   useEffect(() => {
     if (selectedNodeId) {
+      const isText = textNodes.some((n) => n.id === selectedNodeId);
+      if (isText) return;
+
       const handle = setTimeout(() => {
         setIsExpanded(true);
       }, 0);
       return () => clearTimeout(handle);
     }
-  }, [selectedNodeId]);
+  }, [selectedNodeId, textNodes]);
 
   const [viewportHeight, setViewportHeight] = useState<number>(() => {
     if (typeof window !== 'undefined') {
@@ -503,6 +506,42 @@ export const EditorScreen: React.FC = () => {
 
   const [scale, setScale] = useState(1);
   const [stageSize, setStageSize] = useState({ width: 400, height: 400 });
+
+  const updateSelectedTextNodes = useCallback((partial: Partial<TextNode>) => {
+    const targetIds = selectedNodeIds.length > 1 ? selectedNodeIds : selectedTextNode ? [selectedTextNode.id] : [];
+    targetIds.forEach((id) => updateNode(id, partial));
+  }, [selectedNodeIds, selectedTextNode, updateNode]);
+
+  const inlineWidgetPos = useMemo(() => {
+    if (!selectedTextNode) return null;
+
+    const textHeight = estimateTextHeight(selectedTextNode);
+    
+    // Scale true-pixel bounds to display space (screen coords relative to Stage)
+    const nodeLeft = selectedTextNode.x * scale;
+    const nodeWidth = selectedTextNode.width * scale;
+    const nodeTop = selectedTextNode.y * scale;
+    const nodeHeight = textHeight * scale;
+
+    const widgetWidth = 320; // approximate width of the widget
+    const widgetHeight = 44; // approximate height of the widget
+    const gap = 12; // gap between node and widget
+
+    // Preferred position: horizontally centered above the node
+    let left = nodeLeft + (nodeWidth - widgetWidth) / 2;
+    let top = nodeTop - widgetHeight - gap;
+
+    // Flip below the node if it would go off the top of the Stage
+    if (top < 0) {
+      top = nodeTop + nodeHeight + gap;
+    }
+
+    // Clamp coordinates to stay completely within the Stage boundaries
+    left = Math.max(4, Math.min(stageSize.width - widgetWidth - 4, left));
+    top = Math.max(4, Math.min(stageSize.height - widgetHeight - 4, top));
+
+    return { left, top };
+  }, [selectedTextNode, scale, stageSize]);
 
   const transformerProps = useMemo(() => {
     const targetAnchorSize = 20 / scale;
@@ -2262,6 +2301,92 @@ export const EditorScreen: React.FC = () => {
                 <span className="text-graphite text-sm font-semibold tracking-wide font-display">
                   {searchLoading ? 'Fetching background...' : !fontsLoaded ? 'Loading typography...' : 'Loading background...'}
                 </span>
+              </div>
+            )}
+
+            {isMobileLayout && !isExpanded && selectedTextNode && inlineWidgetPos && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${inlineWidgetPos.left}px`,
+                  top: `${inlineWidgetPos.top}px`,
+                  zIndex: 45,
+                }}
+                className="flex items-center gap-2.5 p-1.5 bg-bone-light/95 backdrop-blur-md border border-graphite/15 shadow-xl rounded-xl pointer-events-auto select-none min-h-[44px]"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+              >
+                {/* Font Family Dropdown */}
+                <div className="relative">
+                  <select
+                    value={selectedTextNode.fontFamily}
+                    onChange={(e) => updateSelectedTextNodes({ fontFamily: e.target.value })}
+                    style={{ fontFamily: selectedTextNode.fontFamily }}
+                    className="bg-white border border-graphite/15 focus:border-nonrepro rounded-lg py-1 pl-2 pr-7 text-xs font-semibold text-graphite focus:outline-none transition-all cursor-pointer appearance-none min-h-[32px] max-w-[110px] truncate"
+                  >
+                    {FONTS.map((font) => (
+                      <option
+                        key={font.family}
+                        value={font.family}
+                        style={{ fontFamily: font.family }}
+                        className="bg-white text-graphite py-1 text-xs"
+                      >
+                        {font.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-1.5 pointer-events-none text-graphite-muted">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Color Swatch */}
+                <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-graphite/15 flex-shrink-0 bg-white shadow-sm flex items-center justify-center hover:scale-105 active:scale-95 transition-all">
+                  <div
+                    className="w-5 h-5 rounded-full border border-graphite/10"
+                    style={{ backgroundColor: selectedTextNode.fill }}
+                  />
+                  <input
+                    type="color"
+                    value={selectedTextNode.fill}
+                    onChange={(e) => updateSelectedTextNodes({ fill: e.target.value })}
+                    className="absolute inset-0 w-[200%] h-[200%] -translate-x-1/4 -translate-y-1/4 cursor-pointer opacity-0"
+                  />
+                </div>
+
+                <div className="w-[1px] h-6 bg-graphite/10" />
+
+                {/* Opacity Slider */}
+                <div className="flex items-center gap-1.5 px-0.5">
+                  <svg className="w-4 h-4 text-graphite-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <title>Highlight Box Opacity</title>
+                    <circle cx="12" cy="12" r="9" strokeWidth={2} />
+                    <path d="M12 3a9 9 0 000 18V3z" fill="currentColor" opacity={0.5} />
+                  </svg>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={selectedTextNode.highlightOpacity ?? 0.5}
+                    onChange={(e) => updateSelectedTextNodes({ highlightOpacity: parseFloat(e.target.value), highlightEnabled: true })}
+                    className="w-16 h-1 cursor-pointer accent-pencil"
+                  />
+                </div>
+
+                <div className="w-[1px] h-6 bg-graphite/10" />
+
+                {/* More Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(true)}
+                  className="px-2.5 py-1.5 rounded-lg bg-nonrepro/10 hover:bg-nonrepro/25 text-nonrepro text-xs font-bold font-display hover:scale-105 active:scale-95 transition-all flex items-center justify-center min-h-[32px] cursor-pointer"
+                >
+                  More
+                </button>
               </div>
             )}
           </div>
