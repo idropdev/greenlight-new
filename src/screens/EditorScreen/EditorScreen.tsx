@@ -317,6 +317,85 @@ export const EditorScreen: React.FC = () => {
     }
   }, [selectedNodeId]);
 
+  const [viewportHeight, setViewportHeight] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      return window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    }
+    return 800;
+  });
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      setIsMobileLayout(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let rafId: number;
+    const handleVVChange = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const vv = window.visualViewport;
+        if (!vv) return;
+
+        setViewportHeight(vv.height);
+
+        const activeEl = document.activeElement;
+        const isInputFocused = activeEl && (
+          activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT'
+        );
+
+        const isHeightShrunk = vv.height < window.innerHeight - 150;
+        setIsKeyboardOpen(Boolean(isInputFocused && isHeightShrunk));
+      });
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleVVChange);
+      window.visualViewport.addEventListener('scroll', handleVVChange);
+    }
+
+    const handleFocusIn = (e: FocusEvent) => {
+      setTimeout(handleVVChange, 50);
+      
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        setTimeout(() => {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 150);
+      }
+    };
+
+    const handleFocusOut = () => {
+      setTimeout(handleVVChange, 100);
+    };
+
+    window.addEventListener('focusin', handleFocusIn);
+    window.addEventListener('focusout', handleFocusOut);
+
+    handleVVChange();
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleVVChange);
+        window.visualViewport.removeEventListener('scroll', handleVVChange);
+      }
+      window.removeEventListener('focusin', handleFocusIn);
+      window.removeEventListener('focusout', handleFocusOut);
+      cancelAnimationFrame(rafId);
+    };
+  }, []);
+
   const stageRef = useRef<Konva.Stage | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
   const imageTransformerRef = useRef<Konva.Transformer | null>(null);
@@ -507,6 +586,7 @@ export const EditorScreen: React.FC = () => {
 
   const updateScale = useCallback(() => {
     if (!containerRef.current) return;
+    if (isKeyboardOpen) return;
     const padding = 32;
     const containerW = Math.max(containerRef.current.clientWidth - padding, 200);
     const containerH = Math.max(containerRef.current.clientHeight - padding, 200);
@@ -517,7 +597,7 @@ export const EditorScreen: React.FC = () => {
       width: trueWidth * newScale,
       height: trueHeight * newScale,
     });
-  }, [trueWidth, trueHeight]);
+  }, [trueWidth, trueHeight, isKeyboardOpen]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1235,7 +1315,10 @@ export const EditorScreen: React.FC = () => {
   );
 
   return (
-    <div className="h-dvh bg-bone text-graphite flex flex-col md:flex-row relative overflow-hidden">
+    <div
+      style={isMobileLayout ? { height: `${viewportHeight}px` } : undefined}
+      className="h-dvh bg-bone text-graphite flex flex-col md:flex-row relative overflow-hidden"
+    >
       {/* Mobile Top Bar */}
       <div className="flex md:hidden h-14 bg-bone-light border-b border-nonrepro/25 px-4 items-center justify-between flex-shrink-0 z-40 pt-safe">
         <div className="flex flex-col">
@@ -1256,7 +1339,13 @@ export const EditorScreen: React.FC = () => {
         </div>
       </div>
 
-      <aside className={`w-full md:w-[22rem] lg:w-96 bg-bone-light border-t md:border-t-0 md:border-r border-nonrepro/25 z-30 flex flex-col transition-[height] duration-300 ease-in-out overflow-hidden rounded-t-2xl md:rounded-t-none order-2 md:order-1 ${isExpanded ? 'h-[60dvh]' : 'h-14 md:h-dvh'}`}>
+      <aside
+        className={`w-full md:w-[22rem] lg:w-96 bg-bone-light border-t md:border-t-0 md:border-r border-nonrepro/25 z-30 flex flex-col overflow-hidden rounded-t-2xl md:rounded-t-none order-2 md:order-1 ${
+          isMobileLayout && isKeyboardOpen
+            ? 'flex-1 min-h-0 h-auto transition-none'
+            : `transition-[height] duration-300 ease-in-out ${isExpanded ? 'h-[60dvh]' : 'h-14 md:h-dvh'}`
+        }`}
+      >
         {/* Mobile Drawer Header */}
         <div 
           className="flex md:hidden items-center justify-between px-5 h-14 border-b border-nonrepro/15 cursor-pointer select-none flex-shrink-0 bg-bone-light"
@@ -1784,7 +1873,10 @@ export const EditorScreen: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 bg-bone flex flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2">
+      <main
+        className="flex-1 bg-bone flex flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2"
+        style={isMobileLayout && isKeyboardOpen ? { height: '180px', flex: '0 0 180px' } : undefined}
+      >
         <div className="flex-1 flex items-center justify-center w-full h-full min-h-0 min-w-0" ref={containerRef}>
           <div
             className="relative border border-nonrepro/25 rounded-lg overflow-hidden shadow-lg bg-bone-light flex items-center justify-center transition-all duration-300 touch-none"
