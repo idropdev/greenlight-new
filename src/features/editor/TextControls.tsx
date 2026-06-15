@@ -1,7 +1,7 @@
 import React from 'react';
 import { useFlyerStore } from '../flyer/flyerStore';
 import type { TextNode } from '../flyer/flyerStore';
-import { FONTS } from '../../lib/fonts';
+import { FONTS, ensureFontsLoaded } from '../../lib/fonts';
 
 const ALIGN_OPTIONS = [
   { value: 'left', label: 'L', title: 'Align left' },
@@ -9,7 +9,11 @@ const ALIGN_OPTIONS = [
   { value: 'right', label: 'R', title: 'Align right' },
 ] as const;
 
-export const TextControls: React.FC = () => {
+interface TextControlsProps {
+  onFontChange?: () => void;
+}
+
+export const TextControls: React.FC<TextControlsProps> = ({ onFontChange }) => {
   const selectedNodeId = useFlyerStore((state) => state.selectedNodeId);
   const selectedNodeIds = useFlyerStore((state) => state.selectedNodeIds);
   const textNodes = useFlyerStore((state) => state.textNodes);
@@ -19,6 +23,27 @@ export const TextControls: React.FC = () => {
   const updateSelectedNodes = (partial: Partial<TextNode>) => {
     const targetIds = selectedNodeIds.length > 1 ? selectedNodeIds : node ? [node.id] : [];
     targetIds.forEach((id) => updateNode(id, partial));
+  };
+
+  const [isShufflingFont, setIsShufflingFont] = React.useState(false);
+
+  const handleShuffleFont = async () => {
+    if (!node) return;
+    setIsShufflingFont(true);
+    try {
+      const currentIndex = FONTS.findIndex((f) => f.family === node.fontFamily);
+      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % FONTS.length;
+      const nextFont = FONTS[nextIndex];
+
+      await ensureFontsLoaded();
+
+      updateSelectedNodes({ fontFamily: nextFont.family });
+      onFontChange?.();
+    } catch (err) {
+      console.error('[FontShuffle] Failed to shuffle font:', err);
+    } finally {
+      setIsShufflingFont(false);
+    }
   };
 
   // If no node is selected, render a subtle instructions card placeholder
@@ -71,29 +96,47 @@ export const TextControls: React.FC = () => {
         <label className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">
           Typography
         </label>
-        <div className="relative">
-          <select
-            value={node.fontFamily}
-            onChange={(e) => updateSelectedNodes({ fontFamily: e.target.value })}
-            style={{ fontFamily: node.fontFamily }}
-            className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg py-3 px-3 md:py-2.5 md:px-3 text-base md:text-sm text-graphite focus:outline-none transition-all cursor-pointer appearance-none pr-10 min-h-[44px] md:min-h-0"
-          >
-            {FONTS.map((font) => (
-              <option
-                key={font.family}
-                value={font.family}
-                style={{ fontFamily: font.family }}
-                className="bg-white text-graphite py-2 font-normal"
-              >
-                {font.label}
-              </option>
-            ))}
-          </select>
-          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-graphite-muted">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <select
+              value={node.fontFamily}
+              onChange={(e) => updateSelectedNodes({ fontFamily: e.target.value })}
+              style={{ fontFamily: node.fontFamily }}
+              className="w-full bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg py-3 px-3 md:py-2.5 md:px-3 text-base md:text-sm text-graphite focus:outline-none transition-all cursor-pointer appearance-none pr-10 min-h-[44px] md:min-h-0"
+            >
+              {FONTS.map((font) => (
+                <option
+                  key={font.family}
+                  value={font.family}
+                  style={{ fontFamily: font.family }}
+                  className="bg-white text-graphite py-2 font-normal"
+                >
+                  {font.label}
+                </option>
+              ))}
+            </select>
+            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-graphite-muted">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={handleShuffleFont}
+            disabled={isShufflingFont}
+            className="flex-shrink-0 flex items-center justify-center w-11 h-11 md:w-[38px] md:h-[38px] rounded-lg border border-graphite/15 bg-white text-graphite hover:text-pencil hover:border-pencil/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
+            title="Shuffle font"
+          >
+            <svg className="w-5 h-5 md:w-4.5 md:h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <path d="M12 12h.01" strokeWidth="4" />
+              <path d="M8 8h.01" strokeWidth="4" />
+              <path d="M8 16h.01" strokeWidth="4" />
+              <path d="M16 8h.01" strokeWidth="4" />
+              <path d="M16 16h.01" strokeWidth="4" />
+            </svg>
+          </button>
         </div>
       </div>
 

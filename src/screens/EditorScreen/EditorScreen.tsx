@@ -583,6 +583,27 @@ export const EditorScreen: React.FC = () => {
     targetIds.forEach((id) => updateNode(id, partial));
   }, [selectedNodeIds, selectedTextNode, updateNode]);
 
+  const [isShufflingFont, setIsShufflingFont] = useState(false);
+
+  const handleShuffleFont = useCallback(async () => {
+    if (!selectedTextNode) return;
+    setIsShufflingFont(true);
+    try {
+      const currentIndex = FONTS.findIndex((f) => f.family === selectedTextNode.fontFamily);
+      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % FONTS.length;
+      const nextFont = FONTS[nextIndex];
+
+      await ensureFontsLoaded();
+
+      updateSelectedTextNodes({ fontFamily: nextFont.family });
+      stageRef.current?.batchDraw();
+    } catch (err) {
+      console.error('[FontShuffle] Failed to shuffle font in inline widget:', err);
+    } finally {
+      setIsShufflingFont(false);
+    }
+  }, [selectedTextNode, updateSelectedTextNodes]);
+
   const inlineWidgetPos = useMemo(() => {
     if (!selectedTextNode) return null;
 
@@ -1509,7 +1530,7 @@ export const EditorScreen: React.FC = () => {
             <>
               {/* On mobile, TextControls lives here inside the drawer. On desktop it lives outside. */}
               <div className="block md:hidden">
-                <TextControls />
+                <TextControls onFontChange={() => stageRef.current?.batchDraw()} />
               </div>
               {/* On desktop, show normal sidebar controls too. */}
               <div className="hidden md:flex flex-col gap-5">
@@ -2405,29 +2426,47 @@ export const EditorScreen: React.FC = () => {
                 onTouchStart={(e) => e.stopPropagation()}
               >
                 {/* Font Family Dropdown */}
-                <div className="relative">
-                  <select
-                    value={selectedTextNode.fontFamily}
-                    onChange={(e) => updateSelectedTextNodes({ fontFamily: e.target.value })}
-                    style={{ fontFamily: selectedTextNode.fontFamily }}
-                    className="bg-white border border-graphite/15 focus:border-nonrepro rounded-lg py-1 pl-2 pr-7 text-xs font-semibold text-graphite focus:outline-none transition-all cursor-pointer appearance-none min-h-[32px] max-w-[110px] truncate"
-                  >
-                    {FONTS.map((font) => (
-                      <option
-                        key={font.family}
-                        value={font.family}
-                        style={{ fontFamily: font.family }}
-                        className="bg-white text-graphite py-1 text-xs"
-                      >
-                        {font.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-1.5 pointer-events-none text-graphite-muted">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                    </svg>
+                <div className="flex items-center gap-1.5">
+                  <div className="relative">
+                    <select
+                      value={selectedTextNode.fontFamily}
+                      onChange={(e) => updateSelectedTextNodes({ fontFamily: e.target.value })}
+                      style={{ fontFamily: selectedTextNode.fontFamily }}
+                      className="bg-white border border-graphite/15 focus:border-nonrepro rounded-lg py-1 pl-2 pr-7 text-xs font-semibold text-graphite focus:outline-none transition-all cursor-pointer appearance-none min-h-[32px] max-w-[90px] truncate"
+                    >
+                      {FONTS.map((font) => (
+                        <option
+                          key={font.family}
+                          value={font.family}
+                          style={{ fontFamily: font.family }}
+                          className="bg-white text-graphite py-1 text-xs"
+                        >
+                          {font.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-1.5 pointer-events-none text-graphite-muted">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleShuffleFont}
+                    disabled={isShufflingFont}
+                    className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg border border-graphite/15 bg-white text-graphite hover:text-pencil hover:border-pencil/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-nonrepro disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
+                    title="Shuffle font"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <path d="M12 12h.01" strokeWidth="4" />
+                      <path d="M8 8h.01" strokeWidth="4" />
+                      <path d="M8 16h.01" strokeWidth="4" />
+                      <path d="M16 8h.01" strokeWidth="4" />
+                      <path d="M16 16h.01" strokeWidth="4" />
+                    </svg>
+                  </button>
                 </div>
 
                 {/* Color Swatch */}
@@ -2481,7 +2520,7 @@ export const EditorScreen: React.FC = () => {
 
         {selectedTextNode && (
           <div className="hidden md:flex flex-shrink-0 z-10 w-full lg:w-auto justify-center lg:overflow-y-auto lg:max-h-full">
-            <TextControls />
+            <TextControls onFontChange={() => stageRef.current?.batchDraw()} />
           </div>
         )}
       </main>
