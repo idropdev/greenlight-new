@@ -13,7 +13,7 @@ export function useExport(
   const selectNode = useFlyerStore((state) => state.selectNode);
   const [isExporting, setIsExporting] = useState(false);
 
-  const generatePreviewUrl = async (): Promise<string | null> => {
+  const generatePreviewUrl = async (presetMultiplier: number = 1): Promise<string | null> => {
     const stage = stageRef.current;
     if (!stage) return null;
 
@@ -45,7 +45,7 @@ export function useExport(
       const dimensions = getDimensionsForSize(size);
       const trueWidth = dimensions.width;
       const displayedStageWidth = stage.width();
-      const pixelRatio = trueWidth / displayedStageWidth;
+      const pixelRatio = (trueWidth * presetMultiplier) / displayedStageWidth;
 
       // 5. Generate PNG data URL
       const dataUrl = stage.toDataURL({
@@ -68,17 +68,17 @@ export function useExport(
     }
   };
 
-  const exportFlyer = async () => {
+  const exportFlyer = async (presetMultiplier: number = 2) => {
     setIsExporting(true);
 
     try {
-      const dataUrl = await generatePreviewUrl();
+      const dataUrl = await generatePreviewUrl(presetMultiplier);
       if (!dataUrl) return;
 
       // 6. Trigger download
       const link = document.createElement('a');
       link.href = dataUrl;
-      link.download = `flyer-${type || 'design'}-${size}.png`;
+      link.download = `flyer-${type || 'design'}-${size}-${presetMultiplier}x.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
