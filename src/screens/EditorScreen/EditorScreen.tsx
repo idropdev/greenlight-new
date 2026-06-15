@@ -504,6 +504,27 @@ export const EditorScreen: React.FC = () => {
   const [scale, setScale] = useState(1);
   const [stageSize, setStageSize] = useState({ width: 400, height: 400 });
 
+  const transformerProps = useMemo(() => {
+    const targetAnchorSize = 20 / scale;
+    const targetStrokeWidth = 1.5 / scale;
+    return {
+      anchorSize: Math.max(8, Math.min(80, Math.round(targetAnchorSize))),
+      anchorStrokeWidth: Math.max(1, Math.min(4, targetStrokeWidth)),
+      borderStrokeWidth: Math.max(1, Math.min(4, targetStrokeWidth)),
+    };
+  }, [scale]);
+
+  useEffect(() => {
+    if (transformerRef.current) {
+      transformerRef.current.forceUpdate();
+      transformerRef.current.getLayer()?.batchDraw();
+    }
+    if (imageTransformerRef.current) {
+      imageTransformerRef.current.forceUpdate();
+      imageTransformerRef.current.getLayer()?.batchDraw();
+    }
+  }, [scale]);
+
   useEffect(() => {
     Konva.hitOnDragEnabled = true;
     let active = true;
@@ -2012,12 +2033,12 @@ export const EditorScreen: React.FC = () => {
                     ref={imageTransformerRef}
                     rotateEnabled={false}
                     enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
-                    anchorSize={Math.round(20 / scale)}
+                    anchorSize={transformerProps.anchorSize}
                     anchorStroke="#7FA8D8"
-                    anchorStrokeWidth={Math.max(1, 1.5 / scale)}
+                    anchorStrokeWidth={transformerProps.anchorStrokeWidth}
                     anchorFill="#ffffff"
                     borderStroke="#7FA8D8"
-                    borderStrokeWidth={Math.max(1, 1.5 / scale)}
+                    borderStrokeWidth={transformerProps.borderStrokeWidth}
                     boundBoxFunc={(oldBox, newBox) => {
                       if (newBox.width < 20 || newBox.height < 20) {
                         return oldBox;
@@ -2207,12 +2228,12 @@ export const EditorScreen: React.FC = () => {
                     ref={transformerRef}
                     rotateEnabled={false}
                     enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']}
-                    anchorSize={Math.round(20 / scale)}
+                    anchorSize={transformerProps.anchorSize}
                     anchorStroke="#7FA8D8"
-                    anchorStrokeWidth={Math.max(1, 1.5 / scale)}
+                    anchorStrokeWidth={transformerProps.anchorStrokeWidth}
                     anchorFill="#ffffff"
                     borderStroke="#7FA8D8"
-                    borderStrokeWidth={Math.max(1, 1.5 / scale)}
+                    borderStrokeWidth={transformerProps.borderStrokeWidth}
                     boundBoxFunc={(oldBox, newBox) => {
                       const minWidth = Math.max(
                         TEXT_MIN_WIDTH,
