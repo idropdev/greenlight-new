@@ -48,6 +48,7 @@ type NodeBounds = {
 
 const SNAP_THRESHOLD = 6;
 const GUIDE_COLOR = '#7FA8D8';
+const SNAP_GUIDE_COLOR = '#E4572E';
 const TEXT_MIN_WIDTH = 40;
 const TEXT_SIDE_ANCHORS = new Set(['middle-left', 'middle-right']);
 
@@ -665,12 +666,13 @@ export const EditorScreen: React.FC = () => {
   }, [selectedTextNode, scale, stageSize]);
 
   const transformerProps = useMemo(() => {
-    const targetAnchorSize = 20 / scale;
-    const targetStrokeWidth = 1.5 / scale;
+    const targetAnchorSize = 12 / scale;
+    const targetStrokeWidth = 2 / scale;
+    const targetBorderStrokeWidth = 1.2 / scale;
     return {
-      anchorSize: Math.max(8, Math.min(80, Math.round(targetAnchorSize))),
+      anchorSize: Math.max(6, Math.min(60, Math.round(targetAnchorSize))),
       anchorStrokeWidth: Math.max(1, Math.min(4, targetStrokeWidth)),
-      borderStrokeWidth: Math.max(1, Math.min(4, targetStrokeWidth)),
+      borderStrokeWidth: Math.max(1, Math.min(4, targetBorderStrokeWidth)),
     };
   }, [scale]);
 
@@ -2211,6 +2213,7 @@ export const EditorScreen: React.FC = () => {
                     anchorStroke="#7FA8D8"
                     anchorStrokeWidth={transformerProps.anchorStrokeWidth}
                     anchorFill="#ffffff"
+                    anchorCornerRadius={Math.round(transformerProps.anchorSize / 2)}
                     borderStroke="#7FA8D8"
                     borderStrokeWidth={transformerProps.borderStrokeWidth}
                     boundBoxFunc={(oldBox, newBox) => {
@@ -2232,9 +2235,9 @@ export const EditorScreen: React.FC = () => {
                           ? [guide.position, 0, guide.position, trueHeight]
                           : [0, guide.position, trueWidth, guide.position]
                       }
-                      stroke={GUIDE_COLOR}
-                      strokeWidth={1}
-                      dash={[4, 4]}
+                      stroke={SNAP_GUIDE_COLOR}
+                      strokeWidth={2 / scale}
+                      dash={[6 / scale, 4 / scale]}
                       listening={false}
                     />
                   ))}
@@ -2406,6 +2409,7 @@ export const EditorScreen: React.FC = () => {
                     anchorStroke="#7FA8D8"
                     anchorStrokeWidth={transformerProps.anchorStrokeWidth}
                     anchorFill="#ffffff"
+                    anchorCornerRadius={Math.round(transformerProps.anchorSize / 2)}
                     borderStroke="#7FA8D8"
                     borderStrokeWidth={transformerProps.borderStrokeWidth}
                     boundBoxFunc={(oldBox, newBox) => {
