@@ -10,6 +10,7 @@ import { buildTextNodes } from '../../features/flyer/layoutPresets';
 import { useUnsplashSearch } from '../../features/unsplash/useUnsplashSearch';
 import { TextControls } from '../../features/editor/TextControls';
 import { useExport } from '../../features/editor/useExport';
+import { ExportDialog } from '../../features/editor/ExportDialog';
 import { ensureFontsLoaded, FONTS } from '../../lib/fonts';
 import { formatFieldValue } from '../../lib/formatters';
 
@@ -508,7 +509,6 @@ export const EditorScreen: React.FC = () => {
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
 
   const [showExportModal, setShowExportModal] = useState(false);
-  const [selectedMultiplier, setSelectedMultiplier] = useState<number>(2);
   const [exportPreviewUrl, setExportPreviewUrl] = useState<string | null>(null);
   const [isGeneratingExportPreview, setIsGeneratingExportPreview] = useState(false);
 
@@ -551,11 +551,7 @@ export const EditorScreen: React.FC = () => {
     setExportPreviewUrl(null);
   }, []);
 
-  const handleConfirmExport = useCallback(async () => {
-    await exportFlyer(selectedMultiplier);
-    setShowExportModal(false);
-    setExportPreviewUrl(null);
-  }, [exportFlyer, selectedMultiplier]);
+
 
   // Lock body scroll when preview or export overlay is open
   useEffect(() => {
@@ -2601,128 +2597,17 @@ export const EditorScreen: React.FC = () => {
         </div>
       )}
 
-      {showExportModal && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-graphite/80 backdrop-blur-sm select-none pt-safe pb-safe pl-safe pr-safe"
-          onClick={handleCloseExportModal}
-        >
-          {/* Dialog Container */}
-          <div
-            className="relative bg-bone-light border border-nonrepro/35 rounded-2xl p-6 shadow-2xl max-w-sm md:max-w-md w-full flex flex-col gap-4 text-graphite"
-            onClick={(event) => event.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold font-display tracking-tight text-graphite flex items-center gap-2">
-                <span className="reg-mark-sm inline-block" />
-                Export Flyer
-              </h3>
-              <button
-                type="button"
-                onClick={handleCloseExportModal}
-                className="text-graphite-muted hover:text-graphite p-1 rounded-full hover:bg-graphite/5 transition-colors focus:outline-none cursor-pointer flex items-center justify-center"
-                aria-label="Close export dialog"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Thumbnail Preview Area */}
-            <div className="relative w-full aspect-square md:max-h-64 rounded-xl border border-graphite/10 bg-bone flex items-center justify-center overflow-hidden shadow-inner">
-              {isGeneratingExportPreview ? (
-                <div className="flex flex-col items-center gap-2">
-                  <svg className="animate-spin h-8 w-8 text-pencil" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  <span className="text-xs font-semibold text-graphite-muted font-display">Generating preview...</span>
-                </div>
-              ) : exportPreviewUrl ? (
-                <img
-                  src={exportPreviewUrl}
-                  alt="Flyer thumbnail"
-                  className="max-w-full max-h-full object-contain p-2"
-                />
-              ) : (
-                <span className="text-xs text-graphite-muted">Preview unavailable</span>
-              )}
-            </div>
-
-            {/* Resolution Selector Options */}
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Resolution Options</span>
-              
-              {[
-                { multiplier: 2, label: '2x (Crisp)', desc: 'High resolution, recommended' },
-                { multiplier: 1, label: '1x (Base)', desc: 'Standard flyer dimensions' },
-                { multiplier: 0.5, label: '0.5x (Small)', desc: 'Smaller file size, fast sharing' },
-              ].map((option) => {
-                const optWidth = Math.round(trueWidth * option.multiplier);
-                const optHeight = Math.round(trueHeight * option.multiplier);
-                const isSelected = selectedMultiplier === option.multiplier;
-
-                return (
-                  <button
-                    key={option.multiplier}
-                    type="button"
-                    onClick={() => setSelectedMultiplier(option.multiplier)}
-                    className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all duration-150 cursor-pointer ${
-                      isSelected
-                        ? 'border-pencil bg-pencil/5 ring-1 ring-pencil/25 text-graphite shadow-sm'
-                        : 'border-graphite/10 bg-white/50 text-graphite hover:border-graphite/25'
-                    }`}
-                  >
-                    <div className="flex flex-col">
-                      <span className="text-xs font-bold font-display">{option.label}</span>
-                      <span className="text-[10px] text-graphite-muted leading-tight mt-0.5">{option.desc}</span>
-                    </div>
-                    <span className="text-[11px] font-mono font-bold bg-graphite/5 px-2 py-0.5 rounded text-graphite/80">
-                      {optWidth} × {optHeight} px
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Formats info */}
-            <div className="flex items-center justify-between text-[11px] text-graphite-muted border-t border-graphite/10 pt-3">
-              <span>File Format</span>
-              <span className="font-semibold text-graphite">PNG (lossless, high fidelity)</span>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-3 mt-1">
-              <button
-                type="button"
-                onClick={handleCloseExportModal}
-                className="flex-1 px-4 py-2.5 text-xs font-semibold border border-graphite/15 hover:border-graphite/30 rounded-lg text-graphite bg-transparent hover:bg-graphite/5 transition-all duration-200 cursor-pointer text-center min-h-[40px]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmExport}
-                disabled={isExporting}
-                className="flex-1 px-4 py-2.5 text-xs font-bold rounded-lg text-bone bg-pencil hover:bg-pencil/90 transition-all duration-200 cursor-pointer shadow-md shadow-pencil/15 text-center min-h-[40px] flex items-center justify-center gap-1.5"
-              >
-                {isExporting ? (
-                  <>
-                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Exporting...
-                  </>
-                ) : (
-                  'Export Flyer'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ExportDialog
+        isOpen={showExportModal}
+        onClose={handleCloseExportModal}
+        size={size}
+        trueWidth={trueWidth}
+        trueHeight={trueHeight}
+        isGeneratingExportPreview={isGeneratingExportPreview}
+        exportPreviewUrl={exportPreviewUrl}
+        isExporting={isExporting}
+        exportFlyer={exportFlyer}
+      />
     </div>
   );
 };

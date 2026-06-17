@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type Konva from 'konva';
+import Konva from 'konva';
 import { useFlyerStore } from '../flyer/flyerStore';
 import { getDimensionsForSize } from '../flyer/sizes';
 
@@ -13,7 +13,10 @@ export function useExport(
   const selectNode = useFlyerStore((state) => state.selectNode);
   const [isExporting, setIsExporting] = useState(false);
 
-  const generatePreviewUrl = async (presetMultiplier: number = 1): Promise<string | null> => {
+  const generatePreviewUrl = async (
+    targetWidthOrMultiplier: number = 1,
+    format: 'png' | 'jpeg' = 'png'
+  ): Promise<string | null> => {
     const stage = stageRef.current;
     if (!stage) return null;
 
@@ -35,23 +38,53 @@ export function useExport(
         imageTransformerRef.current.getLayer()?.draw();
       }
 
+      const dimensions = getDimensionsForSize(size);
+      const trueWidth = dimensions.width;
+      const displayedStageWidth = stage.width();
+      
+      let targetWidth = targetWidthOrMultiplier;
+      if (targetWidthOrMultiplier <= 10) {
+        targetWidth = trueWidth * targetWidthOrMultiplier;
+      }
+      
+      const pixelRatio = targetWidth / displayedStageWidth;
+
+      // For JPEG, set a white background fill before export so transparency doesn't render black, and restore after.
+      let whiteBgRect: Konva.Rect | null = null;
+      const layers = stage.getLayers();
+      if (format === 'jpeg' && layers.length > 0) {
+        const firstLayer = layers[0];
+        whiteBgRect = new Konva.Rect({
+          x: 0,
+          y: 0,
+          width: dimensions.width,
+          height: dimensions.height,
+          fill: '#ffffff',
+        });
+        firstLayer.add(whiteBgRect);
+        whiteBgRect.moveToBottom();
+        firstLayer.draw();
+      }
+
       // 3. Force synchronous stage redraw
       stage.draw();
 
       // Give React/Konva a frame/tick to update selection display
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // 4. Calculate pixelRatio to scale back to 1:1 true pixels
-      const dimensions = getDimensionsForSize(size);
-      const trueWidth = dimensions.width;
-      const displayedStageWidth = stage.width();
-      const pixelRatio = (trueWidth * presetMultiplier) / displayedStageWidth;
-
-      // 5. Generate PNG data URL
+      // 5. Generate data URL
+      const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png';
       const dataUrl = stage.toDataURL({
         pixelRatio,
-        mimeType: 'image/png',
+        mimeType,
       });
+
+      // Restore white bg rect if added
+      if (whiteBgRect) {
+        whiteBgRect.destroy();
+        layers[0].draw();
+        stage.draw();
+      }
 
       return dataUrl;
     } catch (error) {
@@ -68,20 +101,44 @@ export function useExport(
     }
   };
 
-  const exportFlyer = async (presetMultiplier: number = 2) => {
+  const exportFlyer = async (
+    targetWidth: number,
+    targetHeight: number,
+    format: 'png' | 'jpeg' | 'svg'
+  ) => {
     setIsExporting(true);
 
     try {
-      const dataUrl = await generatePreviewUrl(presetMultiplier);
-      if (!dataUrl) return;
+      let dataUrl: string | null = null;
+      let downloadUrl: string | null = null;
 
-      // 6. Trigger download
+      if (format === 'svg') {
+        dataUrl = await generatePreviewUrl(targetWidth, 'png');
+        if (!dataUrl) return;
+
+        const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${targetWidth} ${targetHeight}" width="${targetWidth}" height="${targetHeight}">
+  <image href="${dataUrl}" xlink:href="${dataUrl}" x="0" y="0" width="${targetWidth}" height="${targetHeight}" />
+</svg>`;
+        const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+        downloadUrl = URL.createObjectURL(blob);
+      } else {
+        dataUrl = await generatePreviewUrl(targetWidth, format);
+        downloadUrl = dataUrl;
+      }
+
+      if (!downloadUrl) return;
+
+      // Trigger download
       const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = `flyer-${type || 'design'}-${size}-${presetMultiplier}x.png`;
+      link.href = downloadUrl;
+      link.download = `flyer-${type || 'design'}-${size}-${targetWidth}x${targetHeight}.${format}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+
+      if (format === 'svg') {
+        URL.revokeObjectURL(downloadUrl);
+      }
     } catch (error) {
       console.error('Error exporting flyer:', error);
     } finally {
