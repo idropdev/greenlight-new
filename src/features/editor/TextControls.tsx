@@ -36,9 +36,10 @@ const AlignmentIcon: React.FC<{ align: AlignValue }> = ({ align }) => (
 
 interface TextControlsProps {
   onFontChange?: () => void;
+  onBack?: () => void;
 }
 
-export const TextControls: React.FC<TextControlsProps> = ({ onFontChange }) => {
+export const TextControls: React.FC<TextControlsProps> = ({ onFontChange, onBack }) => {
   const selectedNodeId = useFlyerStore((state) => state.selectedNodeId);
   const selectedNodeIds = useFlyerStore((state) => state.selectedNodeIds);
   const textNodes = useFlyerStore((state) => state.textNodes);
@@ -100,6 +101,15 @@ export const TextControls: React.FC<TextControlsProps> = ({ onFontChange }) => {
             {node.field} Properties
           </h3>
         </div>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="md:hidden inline-flex items-center justify-center px-3 py-1.5 text-xs font-bold text-pencil border border-pencil/20 hover:border-pencil hover:bg-pencil/5 rounded-lg transition-all cursor-pointer min-h-[32px]"
+          >
+            ← Back
+          </button>
+        )}
       </div>
 
       {/* Control: Text content */}

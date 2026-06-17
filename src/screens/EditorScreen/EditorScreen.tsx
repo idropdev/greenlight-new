@@ -11,6 +11,7 @@ import { useUnsplashSearch } from '../../features/unsplash/useUnsplashSearch';
 import { TextControls } from '../../features/editor/TextControls';
 import { useExport } from '../../features/editor/useExport';
 import { ExportDialog } from '../../features/editor/ExportDialog';
+import { PreviewOverlay } from '../../features/editor/PreviewOverlay';
 import { ensureFontsLoaded, FONTS } from '../../lib/fonts';
 import { formatFieldValue } from '../../lib/formatters';
 
@@ -1527,29 +1528,29 @@ export const EditorScreen: React.FC = () => {
       <aside
         className={`w-full md:w-[22rem] lg:w-96 bg-bone-light border-t md:border-t-0 md:border-r border-nonrepro/25 z-30 flex flex-col overflow-hidden rounded-t-2xl md:rounded-t-none order-2 md:order-1 ${
           isMobileLayout
-            ? isKeyboardOpen
-              ? 'flex-1 min-h-0 h-auto transition-none'
-              : `transition-[height] duration-300 ease-in-out ${isExpanded ? 'h-[60dvh]' : 'h-14'}`
+            ? 'flex-1 min-h-0 h-full rounded-t-none border-t-0'
             : 'md:h-dvh'
         }`}
       >
         {/* Mobile Drawer Header */}
-        <div 
-          className="flex md:hidden items-center justify-between px-5 h-14 border-b border-nonrepro/15 cursor-pointer select-none flex-shrink-0 bg-bone-light"
-          onClick={() => setIsExpanded(!isExpanded)}
-        >
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-nonrepro animate-pulse" />
-            <span className="text-sm font-bold tracking-tight text-graphite font-display">
-              {isExpanded ? 'Collapse Editor Controls' : 'Expand Editor Controls'}
-            </span>
+        {!isMobileLayout && (
+          <div 
+            className="flex md:hidden items-center justify-between px-5 h-14 border-b border-nonrepro/15 cursor-pointer select-none flex-shrink-0 bg-bone-light"
+            onClick={() => setIsExpanded(!isExpanded)}
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-nonrepro animate-pulse" />
+              <span className="text-sm font-bold tracking-tight text-graphite font-display">
+                {isExpanded ? 'Collapse Editor Controls' : 'Expand Editor Controls'}
+              </span>
+            </div>
+            <button type="button" className="text-graphite-muted focus:outline-none min-h-[44px] min-w-[44px] flex items-center justify-center">
+              <svg className={`w-5 h-5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
           </div>
-          <button type="button" className="text-graphite-muted focus:outline-none min-h-[44px] min-w-[44px] flex items-center justify-center">
-            <svg className={`w-5 h-5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        </div>
+        )}
 
         {/* Scrollable Content Container */}
         <div className="flex-1 min-h-0 overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-5 editor-sidebar">
@@ -1563,7 +1564,10 @@ export const EditorScreen: React.FC = () => {
             <>
               {/* On mobile, TextControls lives here inside the drawer. On desktop it lives outside. */}
               <div className="block md:hidden">
-                <TextControls onFontChange={() => stageRef.current?.batchDraw()} />
+                <TextControls 
+                  onFontChange={() => stageRef.current?.batchDraw()} 
+                  onBack={() => selectNodes([])}
+                />
               </div>
               {/* On desktop, show normal sidebar controls too. */}
               <div className="hidden md:flex flex-col gap-5">
@@ -1632,11 +1636,28 @@ export const EditorScreen: React.FC = () => {
                   <form className="space-y-3" onSubmit={(event) => event.preventDefault()}>
                     {fieldDefinitions.map((field) => {
                       const value = fields[field.key] || '';
+                      const targetKey = (type === 'event' && field.key === 'endTime') ? 'startTime' : field.key;
+                      const hasTextNode = textNodes.some((n) => n.id === targetKey);
+
                       return (
                         <div key={field.key} className="flex flex-col gap-1.5">
-                          <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
-                            {field.label}
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
+                              {field.label}
+                            </label>
+                            {hasTextNode && (
+                              <button
+                                type="button"
+                                onClick={() => selectNodes([targetKey])}
+                                className="text-[11px] font-semibold text-pencil hover:text-pencil/80 flex items-center gap-1 cursor-pointer min-h-[30px] focus:outline-none"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                                Style
+                              </button>
+                            )}
+                          </div>
                           {field.multiline ? (
                             <textarea
                               id={`field-${field.key}`}
@@ -1873,11 +1894,28 @@ export const EditorScreen: React.FC = () => {
                 <form className="space-y-3" onSubmit={(event) => event.preventDefault()}>
                   {fieldDefinitions.map((field) => {
                     const value = fields[field.key] || '';
+                    const targetKey = (type === 'event' && field.key === 'endTime') ? 'startTime' : field.key;
+                    const hasTextNode = textNodes.some((n) => n.id === targetKey);
+
                     return (
                       <div key={field.key} className="flex flex-col gap-1.5">
-                        <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
-                          {field.label}
-                        </label>
+                        <div className="flex items-center justify-between">
+                          <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
+                            {field.label}
+                          </label>
+                          {hasTextNode && (
+                            <button
+                              type="button"
+                              onClick={() => selectNodes([targetKey])}
+                              className="text-[11px] font-semibold text-pencil hover:text-pencil/80 flex items-center gap-1 cursor-pointer min-h-[30px] focus:outline-none"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                              Style
+                            </button>
+                          )}
+                        </div>
                         {field.inputType === 'textarea' || (field.inputType === undefined && field.multiline) ? (
                           <textarea
                             id={`field-${field.key}`}
@@ -2071,7 +2109,11 @@ export const EditorScreen: React.FC = () => {
       </aside>
 
       <main
-        className="flex-1 bg-bone flex flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2"
+        className={`flex-1 bg-bone flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2 ${
+          isMobileLayout
+            ? 'absolute opacity-0 pointer-events-none -z-50 w-full h-full'
+            : 'flex'
+        }`}
         style={isMobileLayout && isKeyboardOpen ? { height: '180px', flex: '0 0 180px' } : undefined}
       >
         <div className="flex-1 flex items-center justify-center w-full h-full min-h-0 min-w-0" ref={containerRef}>
@@ -2572,36 +2614,7 @@ export const EditorScreen: React.FC = () => {
         </div>
       )}
 
-      {previewUrl && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 md:p-8 bg-graphite/90 backdrop-blur-sm select-none pt-safe pb-safe pl-safe pr-safe"
-          onClick={handleClosePreview}
-        >
-          {/* Close button: visible ✕ button (top corner, finger-sized >= 44px) */}
-          <button
-            type="button"
-            onClick={handleClosePreview}
-            className="absolute top-4 right-4 z-50 flex items-center justify-center w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer border border-white/25 focus:outline-none"
-            aria-label="Close preview"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-
-          {/* Centered Image Wrapper */}
-          <div
-            className="relative max-w-full max-h-[85vh] md:max-h-[90vh] flex items-center justify-center"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <img
-              src={previewUrl}
-              alt="Flyer preview"
-              className="max-w-full max-h-full object-contain shadow-2xl rounded-sm border border-graphite/10"
-            />
-          </div>
-        </div>
-      )}
+      <PreviewOverlay previewUrl={previewUrl} onClose={handleClosePreview} />
 
       <ExportDialog
         isOpen={showExportModal}
