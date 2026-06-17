@@ -1603,15 +1603,15 @@ export const EditorScreen: React.FC = () => {
                               : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
                           }`}
                         >
+                          <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
+                          <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
                           {s.platforms && (
-                            <div className="flex gap-1 items-center justify-center mb-0.5 opacity-80">
+                            <div className="flex gap-1 items-center justify-center mt-0.5 opacity-80">
                               {s.platforms.map((plat) => (
                                 <PlatformIcon key={plat} name={plat} />
                               ))}
                             </div>
                           )}
-                          <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
-                          <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
                         </button>
                       );
                     })}
@@ -1844,15 +1844,15 @@ export const EditorScreen: React.FC = () => {
                             : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
                         }`}
                       >
+                        <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
+                        <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
                         {s.platforms && (
-                          <div className="flex gap-1 items-center justify-center mb-0.5 opacity-80">
+                          <div className="flex gap-1 items-center justify-center mt-0.5 opacity-80">
                             {s.platforms.map((plat) => (
                               <PlatformIcon key={plat} name={plat} />
                             ))}
                           </div>
                         )}
-                        <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
-                        <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
                       </button>
                     );
                   })}
