@@ -42,6 +42,14 @@ export function buildTextNodes(
 
   // Filter fields: skip empty or whitespace-only values
   const activeFields = definitions.filter((def) => {
+    if (type === 'event' && def.key === 'endTime') {
+      return false;
+    }
+    if (type === 'event' && def.key === 'startTime') {
+      const hasStart = fields.startTime && fields.startTime.trim() !== '';
+      const hasEnd = fields.endTime && fields.endTime.trim() !== '';
+      return hasStart || hasEnd;
+    }
     const val = fields[def.key];
     return val && val.trim() !== '';
   });
@@ -80,7 +88,7 @@ export function buildTextNodes(
     nodes.push({
       id: def.key,
       field: def.key,
-      text: formatFieldValue(def.key, val),
+      text: formatFieldValue(def.key, val, fields),
       x: nodeX,
       y,
       fontFamily: 'Inter, system-ui, sans-serif',
@@ -105,7 +113,7 @@ export function buildTextNodes(
     nodes.push({
       id: def.key,
       field: def.key,
-      text: formatFieldValue(def.key, val),
+      text: formatFieldValue(def.key, val, fields),
       x: nodeX,
       y,
       fontFamily: 'Inter, system-ui, sans-serif',
@@ -130,7 +138,7 @@ export function buildTextNodes(
     nodes.push({
       id: def.key,
       field: def.key,
-      text: formatFieldValue(def.key, val),
+      text: formatFieldValue(def.key, val, fields),
       x: nodeX,
       y,
       fontFamily: 'Inter, system-ui, sans-serif',

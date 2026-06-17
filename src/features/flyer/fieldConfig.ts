@@ -12,7 +12,8 @@ export const fieldConfig: Record<FlyerType, FieldDefinition[]> = {
   event: [
     { key: 'title', label: 'Event Title', placeholder: 'e.g. Summer Music Festival', multiline: false },
     { key: 'date', label: 'Date', placeholder: 'e.g. Saturday, October 14', multiline: false, inputType: 'date' },
-    { key: 'time', label: 'Time', placeholder: 'e.g. 6:00 PM - 10:00 PM', multiline: false, inputType: 'time' },
+    { key: 'startTime', label: 'Start Time', placeholder: 'e.g. 6:00 PM', multiline: false, inputType: 'time' },
+    { key: 'endTime', label: 'End Time', placeholder: 'e.g. 10:00 PM', multiline: false, inputType: 'time' },
     { key: 'location', label: 'Location', placeholder: 'e.g. Central Park Amphitheater', multiline: false },
     { key: 'description', label: 'Description', placeholder: 'Describe the event, line-up, special guests...', multiline: true },
   ],

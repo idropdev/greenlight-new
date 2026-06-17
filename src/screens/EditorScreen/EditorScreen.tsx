@@ -875,11 +875,13 @@ export const EditorScreen: React.FC = () => {
 
   const handleFieldChange = useCallback((key: string, value: string) => {
     setField(key, value);
-    const matchingNode = textNodes.find((node) => node.field === key);
+    const updatedFields = { ...fields, [key]: value };
+    const targetKey = (key === 'startTime' || key === 'endTime') ? 'startTime' : key;
+    const matchingNode = textNodes.find((node) => node.field === targetKey);
     if (matchingNode) {
-      updateNode(matchingNode.id, { text: formatFieldValue(key, value) });
+      updateNode(matchingNode.id, { text: formatFieldValue(targetKey, updatedFields[targetKey], updatedFields) });
     }
-  }, [setField, textNodes, updateNode]);
+  }, [setField, fields, textNodes, updateNode]);
 
   const handleKeywordSearch = useCallback((event: React.FormEvent) => {
     event.preventDefault();
