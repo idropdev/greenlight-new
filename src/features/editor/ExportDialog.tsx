@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { FLYER_SIZE_INFO } from '../flyer/sizes';
 import type { SizeKey } from '../flyer/flyerStore';
 
@@ -35,11 +35,6 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
 
   const ratio = trueWidth / trueHeight;
 
-  // Sync with base dimensions when size key changes
-  useEffect(() => {
-    setWidthVal(String(trueWidth * 2));
-    setHeightVal(String(trueHeight * 2));
-  }, [trueWidth, trueHeight]);
 
   const handleWidthChange = (val: string) => {
     setWidthVal(val);
@@ -65,11 +60,9 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
 
   const handleBlur = () => {
     let w = parseInt(widthVal, 10);
-    let h = parseInt(heightVal, 10);
 
-    if (isNaN(w) || isNaN(h) || w <= 0 || h <= 0) {
+    if (isNaN(w) || w <= 0) {
       w = trueWidth * 2;
-      h = trueHeight * 2;
     }
 
     // Clamp width to sane range (100 - 8000)
@@ -95,11 +88,9 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
 
   const handleConfirmExport = async () => {
     let w = parseInt(widthVal, 10);
-    let h = parseInt(heightVal, 10);
 
-    if (isNaN(w) || isNaN(h) || w <= 0 || h <= 0) {
+    if (isNaN(w) || w <= 0) {
       w = trueWidth * 2;
-      h = trueHeight * 2;
     }
 
     let clampedW = Math.min(8000, Math.max(100, w));

@@ -1234,7 +1234,7 @@ export const EditorScreen: React.FC = () => {
 
     setActiveGuides(guides);
     draggedNode.getLayer()?.batchDraw();
-  }, [textNodes, trueWidth, trueHeight, updateNode]);
+  }, [textNodes, trueWidth, trueHeight]);
 
   const handleTextTransform = useCallback((event: Konva.KonvaEventObject<Event>, node: TextNode) => {
     const activeAnchor = transformerRef.current?.getActiveAnchor() ?? null;
@@ -2108,6 +2108,12 @@ export const EditorScreen: React.FC = () => {
         </div>
       </aside>
 
+      {/* 
+        On mobile, the live flyer canvas is hidden by default and positioned absolutely behind 
+        the controls. This lets the editor open directly into the editing controls, avoiding 
+        the shrunk canvas. The Konva stage still renders and executes in the background so 
+        the user can preview it via PreviewOverlay and export the flyer seamlessly.
+      */}
       <main
         className={`flex-1 bg-bone flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2 ${
           isMobileLayout
@@ -2617,6 +2623,7 @@ export const EditorScreen: React.FC = () => {
       <PreviewOverlay previewUrl={previewUrl} onClose={handleClosePreview} />
 
       <ExportDialog
+        key={`${size}-${showExportModal}`}
         isOpen={showExportModal}
         onClose={handleCloseExportModal}
         size={size}
