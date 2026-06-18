@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Konva from 'konva';
 import { useFlyerStore } from '../flyer/flyerStore';
 import { getDimensionsForSize } from '../flyer/sizes';
+import { trackEvent } from '../../lib/analytics';
 
 export function useExport(
   stageRef: React.RefObject<Konva.Stage | null>,
@@ -135,6 +136,12 @@ export function useExport(
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+
+      trackEvent('flyer_exported', {
+        format,
+        width: targetWidth,
+        height: targetHeight,
+      });
 
       if (format === 'svg') {
         URL.revokeObjectURL(downloadUrl);

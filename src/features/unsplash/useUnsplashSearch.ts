@@ -3,6 +3,7 @@ import { buildUnsplashAutoQuery, searchPhotos } from './unsplashClient';
 import type { UnsplashPhoto } from './unsplashClient';
 import { useFlyerStore } from '../flyer/flyerStore';
 import type { FlyerType } from '../flyer/flyerStore';
+import { trackEvent } from '../../lib/analytics';
 
 /**
  * Custom React hook for searching Unsplash images.
@@ -28,6 +29,7 @@ export function useUnsplashSearch() {
       if (results.length > 0) {
         setCurrentIndex(0);
         setBgImageUrl(results[0].url);
+        trackEvent('image_uploaded', { source: 'unsplash' });
       } else {
         setCurrentIndex(-1);
         setBgImageUrl(null);
@@ -54,6 +56,7 @@ export function useUnsplashSearch() {
     const nextIndex = (currentIndex + 1) % photos.length;
     setCurrentIndex(nextIndex);
     setBgImageUrl(photos[nextIndex].url);
+    trackEvent('image_uploaded', { source: 'unsplash' });
   }, [photos, currentIndex, setBgImageUrl]);
 
   return {

@@ -14,6 +14,7 @@ import { ExportDialog } from '../../features/editor/ExportDialog';
 import { PreviewOverlay } from '../../features/editor/PreviewOverlay';
 import { ensureFontsLoaded, FONTS } from '../../lib/fonts';
 import { formatFieldValue } from '../../lib/formatters';
+import { trackEvent } from '../../lib/analytics';
 
 const FLYER_TYPES: Array<{ key: FlyerType; label: string }> = [
   { key: 'event', label: 'Event' },
@@ -733,6 +734,7 @@ export const EditorScreen: React.FC = () => {
     const generatedNodes = buildTextNodes(type, size, fields);
     if (generatedNodes.length > 0) {
       setTextNodes(generatedNodes);
+      trackEvent('flyer_created', { flyerType: type, size });
     }
   }, [type, size, fields, bgImageUrl, textNodes.length, setTextNodes]);
 
@@ -851,6 +853,7 @@ export const EditorScreen: React.FC = () => {
   const handleSizeChange = useCallback((newSize: SizeKey) => {
     if (newSize === size) return;
     setSize(newSize);
+    trackEvent('size_changed', { size: newSize });
 
     const clampMargin = 20;
     const newDims = getDimensionsForSize(newSize);
@@ -867,12 +870,14 @@ export const EditorScreen: React.FC = () => {
     if (newType === type) return;
 
     setType(newType);
+    trackEvent('campaign_type_selected', { flyerType: newType });
     selectNodes([]);
     setTextNodes([]);
 
     if (bgImageUrl && hasRequiredDetails(newType, fields)) {
       const generatedNodes = buildTextNodes(newType, size, fields);
       setTextNodes(generatedNodes);
+      trackEvent('flyer_created', { flyerType: newType, size });
     }
   }, [type, setType, selectNodes, setTextNodes, bgImageUrl, fields, size]);
 
@@ -1349,6 +1354,7 @@ export const EditorScreen: React.FC = () => {
         width,
         height,
       });
+      trackEvent('image_uploaded', { source: 'upload' });
     };
     image.onerror = () => {
       uploadedImageUrlsRef.current.delete(objectUrl);
@@ -1422,6 +1428,7 @@ export const EditorScreen: React.FC = () => {
     const objectUrl = URL.createObjectURL(file);
     uploadedUrlRef.current = objectUrl;
     setBgImageUrl(objectUrl);
+    trackEvent('image_uploaded', { source: 'upload' });
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
