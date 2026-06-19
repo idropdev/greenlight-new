@@ -740,10 +740,18 @@ export const EditorScreen: React.FC = () => {
       boxHeight = maxY - minY;
     }
 
+    // Adaptive handle set:
+    // If text box is small (width or height < 120px in true-pixel space):
     if (boxWidth < 120 || boxHeight < 120) {
+      // Corners fit only if both width and height are >= 80px
+      if (boxWidth >= 80 && boxHeight >= 80) {
+        return ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right'];
+      }
+      // Otherwise, corners do not fit (crowded), return only middle-left and middle-right side bars
       return ['middle-left', 'middle-right'];
     }
 
+    // Normal box: show all 6 handles (corners + side bars)
     return ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right'];
   }, [selectedNodeIds, textNodes]);
 
@@ -2342,6 +2350,21 @@ export const EditorScreen: React.FC = () => {
                     anchorCornerRadius={Math.round(transformerProps.anchorSize / 2)}
                     borderStroke="#7FA8D8"
                     borderStrokeWidth={transformerProps.borderStrokeWidth}
+                    anchorStyleFunc={(anchor: Konva.Rect) => {
+                      const visualCornerSize = 10;
+                      const targetCornerSize = visualCornerSize / scale;
+
+                      anchor.fill('#ffffff');
+                      anchor.stroke('#7FA8D8');
+                      anchor.strokeWidth(1.5 / scale);
+
+                      anchor.width(targetCornerSize);
+                      anchor.height(targetCornerSize);
+                      anchor.offsetX(targetCornerSize / 2);
+                      anchor.offsetY(targetCornerSize / 2);
+                      anchor.cornerRadius(targetCornerSize / 2);
+                      anchor.hitStrokeWidth(Math.max(0, (44 - visualCornerSize) / scale));
+                    }}
                     boundBoxFunc={(oldBox, newBox) => {
                       if (newBox.width < 20 || newBox.height < 20) {
                         return oldBox;
@@ -2554,17 +2577,17 @@ export const EditorScreen: React.FC = () => {
                     borderStroke="#7FA8D8"
                     borderStrokeWidth={transformerProps.borderStrokeWidth}
                     anchorStyleFunc={(anchor: Konva.Rect) => {
-                      const visualCornerSize = 8;
+                      const visualCornerSize = 10;
                       const targetCornerSize = visualCornerSize / scale;
                       
-                      const visualBarWidth = 4;
-                      const visualBarHeight = 18;
+                      const visualBarWidth = 5;
+                      const visualBarHeight = 20;
                       const targetBarWidth = visualBarWidth / scale;
                       const targetBarHeight = visualBarHeight / scale;
 
                       anchor.fill('#ffffff');
                       anchor.stroke('#7FA8D8');
-                      anchor.strokeWidth(2 / scale);
+                      anchor.strokeWidth(1.5 / scale);
 
                       if (anchor.hasName('middle-left') || anchor.hasName('middle-right')) {
                         anchor.width(targetBarWidth);
