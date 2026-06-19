@@ -148,6 +148,30 @@ function getTextMinWidth(node: Pick<TextNode, 'text' | 'fontFamily' | 'fontSize'
   return Math.max(TEXT_MIN_WIDTH, Math.ceil(context.measureText(longestWord).width));
 }
 
+function getTextWidth(text: string, fontSize: number, fontFamily: string) {
+  if (!text) {
+    return TEXT_MIN_WIDTH;
+  }
+
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+
+  if (!context) {
+    return TEXT_MIN_WIDTH;
+  }
+
+  context.font = `${fontSize}px ${fontFamily}`;
+  const lines = text.split('\n');
+  let maxWidth = 0;
+  for (const line of lines) {
+    const w = context.measureText(line).width;
+    if (w > maxWidth) {
+      maxWidth = w;
+    }
+  }
+  return Math.max(TEXT_MIN_WIDTH, Math.ceil(maxWidth));
+}
+
 function getNodeBounds(node: Pick<TextNode, 'x' | 'y' | 'text' | 'fontSize' | 'width'>): NodeBounds {
   const height = estimateTextHeight(node);
   return {
@@ -358,7 +382,15 @@ export const EditorScreen: React.FC = () => {
   const size = useFlyerStore((state) => state.size);
   const fields = useFlyerStore((state) => state.fields);
   const bgImageUrl = useFlyerStore((state) => state.bgImageUrl);
-  const textNodes = useFlyerStore((state) => state.textNodes);
+  const rawTextNodes = useFlyerStore((state) => state.textNodes);
+  const textNodes = useMemo<TextNode[]>(() => {
+    return rawTextNodes.map((node) => {
+      const effectiveWidth = node.autoWidth !== false
+        ? getTextWidth(node.text, node.fontSize, node.fontFamily)
+        : node.width;
+      return { ...node, width: effectiveWidth, autoWidth: node.autoWidth !== false };
+    });
+  }, [rawTextNodes]);
   const selectedNodeId = useFlyerStore((state) => state.selectedNodeId);
   const selectedNodeIds = useFlyerStore((state) => state.selectedNodeIds);
   const imageNodes = useFlyerStore((state) => state.imageNodes);
@@ -1251,8 +1283,11 @@ export const EditorScreen: React.FC = () => {
     }
 
     const transformedNode = event.target as Konva.Group;
+    const textChild = transformedNode.findOne('Text') as Konva.Text | undefined;
+    const currentWidth = textChild ? textChild.width() : node.width;
+
     const minWidth = getTextMinWidth(node);
-    const scaledWidth = Math.max(minWidth, node.width * Math.abs(transformedNode.scaleX()));
+    const scaledWidth = Math.max(minWidth, currentWidth * Math.abs(transformedNode.scaleX()));
     const resizedLeft = transformedNode.x();
     const resizedRight = resizedLeft + scaledWidth;
     const selectedIdSet = new Set(useFlyerStore.getState().selectedNodeIds);
@@ -1296,7 +1331,6 @@ export const EditorScreen: React.FC = () => {
     transformedNode.scaleX(1);
     transformedNode.scaleY(1);
 
-    const textChild = transformedNode.findOne('Text') as Konva.Text | undefined;
     if (textChild) {
       textChild.width(nextWidth);
     }
@@ -2364,6 +2398,16 @@ export const EditorScreen: React.FC = () => {
                           handleTextTransform(event, node);
                           setActiveGuides([]);
                           lastTextTransformAnchorRef.current = null;
+
+                          const textChild = kNode.findOne('Text') as Konva.Text | undefined;
+                          const finalWidth = textChild ? textChild.width() : node.width;
+
+                          updateNode(node.id, {
+                            x: kNode.x(),
+                            y: kNode.y(),
+                            width: finalWidth,
+                            autoWidth: false,
+                          });
                           return;
                         }
 
@@ -2374,11 +2418,16 @@ export const EditorScreen: React.FC = () => {
 
                         const textChild = kNode.findOne('Text') as Konva.Text | undefined;
                         const currentFontSize = textChild ? textChild.fontSize() : node.fontSize;
+                        const newFontSize = Math.max(8, Math.round(currentFontSize * scaleX));
+
+                        const isAutoWidth = node.autoWidth !== false;
+                        const finalWidth = isAutoWidth ? node.width : Math.max(TEXT_MIN_WIDTH, node.width * scaleX);
 
                         updateNode(node.id, {
                           x: kNode.x(),
                           y: kNode.y(),
-                          fontSize: Math.max(8, Math.round(currentFontSize * scaleX)),
+                          fontSize: newFontSize,
+                          ...(!isAutoWidth ? { width: finalWidth } : {}),
                         });
                         setActiveGuides([]);
                         lastTextTransformAnchorRef.current = null;

@@ -13,6 +13,7 @@ export interface TextNode {
   fill: string;         // color
   width: number;        // for wrapping/resize
   align: 'left' | 'center' | 'right';
+  autoWidth?: boolean;  // whether width hugs the text automatically
   // ── Text legibility ──
   shadowEnabled: boolean;     // default true
   shadowColor: string;        // default '#000000'
