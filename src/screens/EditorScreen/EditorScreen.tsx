@@ -710,6 +710,43 @@ export const EditorScreen: React.FC = () => {
     };
   }, [scale]);
 
+  const textTransformerAnchors = useMemo(() => {
+    const selectedNodes = selectedNodeIds
+      .map((id) => textNodes.find((n) => n.id === id))
+      .filter((n): n is TextNode => Boolean(n));
+
+    if (selectedNodes.length === 0) return [];
+
+    let boxWidth = 0;
+    let boxHeight = 0;
+
+    if (selectedNodes.length === 1) {
+      const node = selectedNodes[0];
+      boxWidth = node.width;
+      boxHeight = estimateTextHeight(node);
+    } else {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      selectedNodes.forEach((node) => {
+        const nodeHeight = estimateTextHeight(node);
+        if (node.x < minX) minX = node.x;
+        if (node.x + node.width > maxX) maxX = node.x + node.width;
+        if (node.y < minY) minY = node.y;
+        if (node.y + nodeHeight > maxY) maxY = node.y + nodeHeight;
+      });
+      boxWidth = maxX - minX;
+      boxHeight = maxY - minY;
+    }
+
+    if (boxWidth < 120 || boxHeight < 120) {
+      return ['middle-left', 'middle-right'];
+    }
+
+    return ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right'];
+  }, [selectedNodeIds, textNodes]);
+
   useEffect(() => {
     if (transformerRef.current) {
       transformerRef.current.forceUpdate();
@@ -2508,7 +2545,7 @@ export const EditorScreen: React.FC = () => {
                   <Transformer
                     ref={transformerRef}
                     rotateEnabled={false}
-                    enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']}
+                    enabledAnchors={textTransformerAnchors}
                     anchorSize={transformerProps.anchorSize}
                     anchorStroke="#7FA8D8"
                     anchorStrokeWidth={transformerProps.anchorStrokeWidth}
@@ -2516,6 +2553,35 @@ export const EditorScreen: React.FC = () => {
                     anchorCornerRadius={Math.round(transformerProps.anchorSize / 2)}
                     borderStroke="#7FA8D8"
                     borderStrokeWidth={transformerProps.borderStrokeWidth}
+                    anchorStyleFunc={(anchor: Konva.Rect) => {
+                      const visualCornerSize = 8;
+                      const targetCornerSize = visualCornerSize / scale;
+                      
+                      const visualBarWidth = 4;
+                      const visualBarHeight = 18;
+                      const targetBarWidth = visualBarWidth / scale;
+                      const targetBarHeight = visualBarHeight / scale;
+
+                      anchor.fill('#ffffff');
+                      anchor.stroke('#7FA8D8');
+                      anchor.strokeWidth(2 / scale);
+
+                      if (anchor.hasName('middle-left') || anchor.hasName('middle-right')) {
+                        anchor.width(targetBarWidth);
+                        anchor.height(targetBarHeight);
+                        anchor.offsetX(targetBarWidth / 2);
+                        anchor.offsetY(targetBarHeight / 2);
+                        anchor.cornerRadius(targetBarWidth / 2);
+                        anchor.hitStrokeWidth(Math.max(0, (44 - visualBarWidth) / scale));
+                      } else {
+                        anchor.width(targetCornerSize);
+                        anchor.height(targetCornerSize);
+                        anchor.offsetX(targetCornerSize / 2);
+                        anchor.offsetY(targetCornerSize / 2);
+                        anchor.cornerRadius(targetCornerSize / 2);
+                        anchor.hitStrokeWidth(Math.max(0, (44 - visualCornerSize) / scale));
+                      }
+                    }}
                     boundBoxFunc={(oldBox, newBox) => {
                       const minWidth = Math.max(
                         TEXT_MIN_WIDTH,
