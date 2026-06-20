@@ -1614,7 +1614,7 @@ export const EditorScreen: React.FC = () => {
       <aside
         className={`w-full md:w-[22rem] lg:w-96 bg-bone-light border-t md:border-t-0 md:border-r border-nonrepro/25 z-30 flex flex-col overflow-hidden rounded-t-2xl md:rounded-t-none order-2 md:order-1 ${
           isMobileLayout
-            ? 'flex-1 min-h-0 h-full rounded-t-none border-t-0'
+            ? 'flex-1 min-h-0 rounded-t-none border-t-0 overflow-x-hidden touch-pan-y'
             : 'md:h-dvh'
         }`}
       >
@@ -1639,7 +1639,7 @@ export const EditorScreen: React.FC = () => {
         )}
 
         {/* Scrollable Content Container */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-5 editor-sidebar">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-5 editor-sidebar">
           {/* Title Section (Desktop only) */}
           <div className="hidden md:block space-y-1">
             <h1 className="text-2xl font-bold tracking-tight text-graphite font-display">Greenlight</h1>
@@ -2201,10 +2201,10 @@ export const EditorScreen: React.FC = () => {
         the user can preview it via PreviewOverlay and export the flyer seamlessly.
       */}
       <main
-        className={`flex-1 bg-bone flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2 ${
+        className={`bg-bone flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2 ${
           isMobileLayout
-            ? 'absolute opacity-0 pointer-events-none -z-50 w-full h-full'
-            : 'flex'
+            ? 'absolute opacity-0 pointer-events-none -z-50 w-full h-full flex-none'
+            : 'flex-1 flex'
         }`}
         style={isMobileLayout && isKeyboardOpen ? { height: '180px', flex: '0 0 180px' } : undefined}
       >
