@@ -414,6 +414,7 @@ export const EditorScreen: React.FC = () => {
   const [activeGuides, setActiveGuides] = useState<GuideLine[]>([]);
   const [imageRenderVersion, setImageRenderVersion] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [mobileStage, setMobileStage] = useState<'details' | 'edit'>('details');
 
   useEffect(() => {
     if (selectedNodeId) {
@@ -1526,6 +1527,26 @@ export const EditorScreen: React.FC = () => {
     reset();
   }, [reset, selectNodes]);
 
+  const handleCreateFlyerMobile = useCallback(() => {
+    if (isCanvasEmpty) {
+      handleShuffle();
+    }
+    setMobileStage('edit');
+  }, [isCanvasEmpty, handleShuffle]);
+
+  const handleResetMobile = useCallback(() => {
+    if (!window.confirm('Start over and clear this flyer?')) return;
+    if (uploadedUrlRef.current) {
+      URL.revokeObjectURL(uploadedUrlRef.current);
+      uploadedUrlRef.current = null;
+    }
+    uploadedImageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    uploadedImageUrlsRef.current.clear();
+    selectNodes([]);
+    reset();
+    setMobileStage('details');
+  }, [reset, selectNodes]);
+
   const renderPreviewButton = (isMobile: boolean) => (
     <button
       id={isMobile ? "preview-btn-mobile" : "preview-btn"}
@@ -1586,6 +1607,291 @@ export const EditorScreen: React.FC = () => {
     </button>
   );
 
+  const campaignTypeSection = (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Campaign Type</h2>
+      <div className="flex flex-wrap gap-2">
+        {FLYER_TYPES.map((flyerType) => {
+          const isActive = type === flyerType.key;
+          return (
+            <button
+              key={flyerType.key}
+              type="button"
+              onClick={() => handleTypeChange(flyerType.key)}
+              className={`flex-1 min-w-[5.75rem] px-3 py-3 md:py-2 rounded-lg text-base md:text-sm font-semibold border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light min-h-[44px] md:min-h-0 ${
+                isActive
+                  ? 'bg-nonrepro/10 border-nonrepro text-nonrepro shadow-sm'
+                  : 'bg-white border-nonrepro/25 text-graphite-muted hover:text-graphite hover:border-nonrepro/50'
+              }`}
+            >
+              {flyerType.label}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+
+  const canvasSizeSection = (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Canvas Size</h2>
+      <div className="flex gap-1.5">
+        {FLYER_SIZE_INFO.map((s) => {
+          const isActive = size === s.key;
+          return (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => handleSizeChange(s.key)}
+              title={s.blurb}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 px-1.5 py-3 md:py-2.5 rounded-lg text-center transition-all duration-200 border min-h-[56px] md:min-h-[48px] ${
+                isActive
+                  ? 'bg-nonrepro/10 border-nonrepro text-nonrepro ring-1 ring-nonrepro/25 shadow-sm'
+                  : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
+              }`}
+            >
+              <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
+              <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
+              {s.platforms && (
+                <div className="flex gap-1 items-center justify-center mt-0.5 opacity-80">
+                  {s.platforms.map((plat) => (
+                    <PlatformIcon key={plat} name={plat} />
+                  ))}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {currentSizeInfo && (
+        <p className="text-[10px] text-graphite-muted leading-snug">
+          {currentSizeInfo.blurb}
+        </p>
+      )}
+    </section>
+  );
+
+  const detailsFormSection = (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Details</h2>
+      <form className="space-y-3" onSubmit={(event) => event.preventDefault()}>
+        {fieldDefinitions.map((field) => {
+          const value = fields[field.key] || '';
+          const targetKey = (type === 'event' && field.key === 'endTime') ? 'startTime' : field.key;
+          const hasTextNode = textNodes.some((n) => n.id === targetKey);
+
+          return (
+            <div key={field.key} className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
+                  {field.label}
+                </label>
+                {hasTextNode && (
+                  <button
+                    type="button"
+                    onClick={() => selectNodes([targetKey])}
+                    className="text-[11px] font-semibold text-pencil hover:text-pencil/80 flex items-center gap-1 cursor-pointer min-h-[30px] focus:outline-none"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                    Style
+                  </button>
+                )}
+              </div>
+              {field.inputType === 'textarea' || (field.inputType === undefined && field.multiline) ? (
+                <textarea
+                  id={`field-${field.key}`}
+                  name={field.key}
+                  placeholder={field.placeholder}
+                  value={value}
+                  onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                  rows={3}
+                  className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none resize-y min-h-[44px]"
+                />
+              ) : field.inputType === 'date' ? (
+                <input
+                  type="date"
+                  id={`field-${field.key}`}
+                  name={field.key}
+                  placeholder={field.placeholder}
+                  value={value}
+                  onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                  className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
+                />
+              ) : field.inputType === 'time' ? (
+                <input
+                  type="time"
+                  id={`field-${field.key}`}
+                  name={field.key}
+                  placeholder={field.placeholder}
+                  value={value}
+                  onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                  className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
+                />
+              ) : (
+                <input
+                  type="text"
+                  id={`field-${field.key}`}
+                  name={field.key}
+                  placeholder={field.placeholder}
+                  value={value}
+                  onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                  className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
+                />
+              )}
+            </div>
+          );
+        })}
+      </form>
+    </section>
+  );
+
+  const backgroundSection = (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Background</h2>
+      <button
+        type="button"
+        onClick={handleShuffle}
+        disabled={primaryBackgroundDisabled}
+        title={primaryBackgroundTitle}
+        className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-base md:text-sm font-semibold rounded-lg shadow-sm transition-all duration-200 border font-display min-h-[44px] md:min-h-0 ${
+          primaryBackgroundDisabled
+            ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed pointer-events-none border-graphite/10 shadow-none'
+            : isCanvasEmpty
+              ? 'bg-pencil text-bone border-transparent hover:bg-pencil/90 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-pencil/15'
+              : 'bg-white text-graphite border-nonrepro/25 hover:border-nonrepro hover:text-nonrepro hover:scale-[1.01] active:scale-[0.99] cursor-pointer'
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12" />
+        </svg>
+        {primaryBackgroundLabel}
+      </button>
+      {isCanvasEmpty && !hasDetailsForCreate && (
+        <p className="text-[11px] leading-snug text-graphite-muted">
+          Fill in the details first.
+        </p>
+      )}
+
+      <form onSubmit={handleKeywordSearch} className="flex gap-2">
+        <input
+          type="text"
+          value={searchKeywords}
+          onChange={(event) => setSearchKeywords(event.target.value)}
+          placeholder="Search backgrounds..."
+          className="flex-1 min-w-0 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg px-3 py-3 md:py-2 text-base md:text-xs text-graphite placeholder-graphite-muted/50 focus:outline-none transition-all min-h-[44px] md:min-h-0"
+        />
+        <button
+          type="submit"
+          disabled={isFetchingOrLoading || !searchKeywords.trim()}
+          className={`inline-flex items-center justify-center px-4 py-3 md:px-3 md:py-2 text-base md:text-xs font-semibold rounded-lg border transition-all duration-200 font-display flex-shrink-0 min-h-[44px] md:min-h-0 ${
+            isFetchingOrLoading || !searchKeywords.trim()
+              ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed border-graphite/10'
+              : 'bg-nonrepro/10 text-nonrepro border-nonrepro/25 hover:bg-nonrepro/20 hover:border-nonrepro/40 cursor-pointer'
+          }`}
+          aria-label="Search backgrounds"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </button>
+      </form>
+
+      {showNoImagesMessage && (
+        <p className="rounded-lg border border-pencil/15 bg-pencil/5 px-3 py-2 text-[11px] leading-snug text-graphite-muted">
+          No images found &mdash; try a different keyword or upload your own.
+        </p>
+      )}
+
+      <div className="space-y-3 rounded-lg border border-graphite/10 bg-white/55 p-3">
+        <label className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-graphite">Background Blur</span>
+            <span className="text-[10px] font-mono text-graphite-muted">{backgroundBlur}px</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={20}
+            step={1}
+            value={backgroundBlur}
+            onChange={(event) => setBackgroundBlur(Number(event.target.value))}
+            className="w-full accent-nonrepro py-3 md:py-1.5"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-graphite">Background Opacity</span>
+            <span className="text-[10px] font-mono text-graphite-muted">{backgroundOpacity}%</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={backgroundOpacity}
+            onChange={(event) => setBackgroundOpacity(Number(event.target.value))}
+            title="0 = hidden; 50 = normal; 100 = black"
+            className="w-full accent-nonrepro py-3 md:py-1.5"
+          />
+        </label>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileUpload}
+        className="hidden"
+        id="bg-upload-input"
+      />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm md:text-xs font-semibold rounded-lg border border-dashed border-nonrepro/35 text-graphite-muted hover:border-nonrepro hover:text-nonrepro hover:bg-nonrepro/5 transition-all duration-200 cursor-pointer font-display min-h-[44px] md:min-h-0"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        Upload Background
+      </button>
+
+      <input
+        ref={imageFileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageFileUpload}
+        className="hidden"
+        id="image-upload-input"
+      />
+      <button
+        type="button"
+        onClick={() => imageFileInputRef.current?.click()}
+        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm md:text-xs font-semibold rounded-lg border border-dashed border-pencil/35 text-graphite-muted hover:border-pencil hover:text-pencil hover:bg-pencil/5 transition-all duration-200 cursor-pointer font-display min-h-[44px] md:min-h-0"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+        Upload Logo / Image
+      </button>
+    </section>
+  );
+
+  const startOverButton = (
+    <div className="mt-auto pt-2">
+      <button
+        id="start-over-btn"
+        type="button"
+        onClick={handleReset}
+        className="w-full inline-flex items-center justify-center px-4 py-3 md:py-2.5 border border-graphite/15 hover:border-pencil/30 hover:text-pencil text-sm md:text-xs font-semibold rounded-lg text-graphite-muted bg-transparent hover:bg-pencil/5 transition-all duration-200 cursor-pointer min-h-[44px] md:min-h-0"
+      >
+        Start Over
+      </button>
+    </div>
+  );
+
   return (
     <div
       style={isMobileLayout ? { height: `${viewportHeight}px` } : undefined}
@@ -1593,13 +1899,32 @@ export const EditorScreen: React.FC = () => {
     >
       {/* Mobile Top Bar */}
       <div className="flex md:hidden h-14 bg-bone-light border-b border-nonrepro/25 px-4 items-center justify-between flex-shrink-0 z-40 pt-safe">
-        <div className="flex flex-col">
-          <span className="text-sm font-bold tracking-tight text-graphite font-display leading-none">Greenlight</span>
-          <span className="text-[10px] text-graphite-muted mt-0.5">Paste-up flyer editor</span>
-        </div>
+        {mobileStage === 'edit' ? (
+          <button
+            onClick={() => {
+              selectNodes([]);
+              setMobileStage('details');
+            }}
+            className="flex items-center gap-1.5 text-sm font-bold text-pencil hover:text-pencil/80 focus:outline-none cursor-pointer"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+            </svg>
+            Details
+          </button>
+        ) : (
+          <div className="flex flex-col">
+            <span className="text-sm font-bold tracking-tight text-graphite font-display leading-none">Greenlight</span>
+            <span className="text-[10px] text-graphite-muted mt-0.5">Paste-up flyer editor</span>
+          </div>
+        )}
         <div className="flex items-center gap-2">
-          {renderPreviewButton(true)}
-          {renderDownloadButton(true)}
+          {mobileStage === 'edit' && (
+            <>
+              {renderPreviewButton(true)}
+              {renderDownloadButton(true)}
+            </>
+          )}
         </div>
       </div>
 
@@ -1646,550 +1971,85 @@ export const EditorScreen: React.FC = () => {
             <p className="text-graphite-muted text-xs">Paste-up flyer editor</p>
           </div>
 
-          {selectedTextNode ? (
-            <>
-              {/* On mobile, TextControls lives here inside the drawer. On desktop it lives outside. */}
-              <div className="block md:hidden">
-                <TextControls 
-                  onFontChange={() => stageRef.current?.batchDraw()} 
-                  onBack={() => selectNodes([])}
-                />
-              </div>
-              {/* On desktop, show normal sidebar controls too. */}
-              <div className="hidden md:flex flex-col gap-5">
-                <section className="space-y-3">
-                  <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Campaign Type</h2>
-                  <div className="flex flex-wrap gap-2">
-                    {FLYER_TYPES.map((flyerType) => {
-                      const isActive = type === flyerType.key;
-                      return (
-                        <button
-                          key={flyerType.key}
-                          type="button"
-                          onClick={() => handleTypeChange(flyerType.key)}
-                          className={`flex-1 min-w-[5.75rem] px-3 py-3 md:py-2 rounded-lg text-base md:text-sm font-semibold border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light min-h-[44px] md:min-h-0 ${
-                            isActive
-                              ? 'bg-nonrepro/10 border-nonrepro text-nonrepro shadow-sm'
-                              : 'bg-white border-nonrepro/25 text-graphite-muted hover:text-graphite hover:border-nonrepro/50'
-                          }`}
-                        >
-                          {flyerType.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <section className="space-y-3">
-                  <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Canvas Size</h2>
-                  <div className="flex gap-1.5">
-                    {FLYER_SIZE_INFO.map((s) => {
-                      const isActive = size === s.key;
-                      return (
-                        <button
-                          key={s.key}
-                          type="button"
-                          onClick={() => handleSizeChange(s.key)}
-                          title={s.blurb}
-                          className={`flex-1 flex flex-col items-center justify-center gap-1 px-1.5 py-3 md:py-2.5 rounded-lg text-center transition-all duration-200 border min-h-[56px] md:min-h-[48px] ${
-                            isActive
-                              ? 'bg-nonrepro/10 border-nonrepro text-nonrepro ring-1 ring-nonrepro/25 shadow-sm'
-                              : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
-                          }`}
-                        >
-                          <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
-                          <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
-                          {s.platforms && (
-                            <div className="flex gap-1 items-center justify-center mt-0.5 opacity-80">
-                              {s.platforms.map((plat) => (
-                                <PlatformIcon key={plat} name={plat} />
-                              ))}
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {currentSizeInfo && (
-                    <p className="text-[10px] text-graphite-muted leading-snug">
-                      {currentSizeInfo.blurb}
-                    </p>
-                  )}
-                </section>
-
-                <section className="space-y-3">
-                  <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Details</h2>
-                  <form className="space-y-3" onSubmit={(event) => event.preventDefault()}>
-                    {fieldDefinitions.map((field) => {
-                      const value = fields[field.key] || '';
-                      const targetKey = (type === 'event' && field.key === 'endTime') ? 'startTime' : field.key;
-                      const hasTextNode = textNodes.some((n) => n.id === targetKey);
-
-                      return (
-                        <div key={field.key} className="flex flex-col gap-1.5">
-                          <div className="flex items-center justify-between">
-                            <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
-                              {field.label}
-                            </label>
-                            {hasTextNode && (
-                              <button
-                                type="button"
-                                onClick={() => selectNodes([targetKey])}
-                                className="text-[11px] font-semibold text-pencil hover:text-pencil/80 flex items-center gap-1 cursor-pointer min-h-[30px] focus:outline-none"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                </svg>
-                                Style
-                              </button>
-                            )}
-                          </div>
-                          {field.multiline ? (
-                            <textarea
-                              id={`field-${field.key}`}
-                              name={field.key}
-                              placeholder={field.placeholder}
-                              value={value}
-                              onChange={(event) => handleFieldChange(field.key, event.target.value)}
-                              rows={3}
-                              className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none resize-y min-h-[44px]"
-                            />
-                          ) : (
-                            <input
-                              type="text"
-                              id={`field-${field.key}`}
-                              name={field.key}
-                              placeholder={field.placeholder}
-                              value={value}
-                              onChange={(event) => handleFieldChange(field.key, event.target.value)}
-                              className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </form>
-                </section>
-
-                <section className="space-y-3">
-                  <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Background</h2>
+          {isMobileLayout ? (
+            // Mobile Layout Stepped Flow
+            mobileStage === 'details' ? (
+              // Stage 1: Fill out details
+              <>
+                {campaignTypeSection}
+                {canvasSizeSection}
+                {detailsFormSection}
+                {/* sticky "Create Flyer" button at bottom */}
+                <div className="mt-auto pt-4 sticky bottom-0 bg-bone-light pb-2">
                   <button
                     type="button"
-                    onClick={handleShuffle}
-                    disabled={primaryBackgroundDisabled}
-                    title={primaryBackgroundTitle}
-                    className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-base md:text-sm font-semibold rounded-lg shadow-sm transition-all duration-200 border font-display min-h-[44px] md:min-h-0 ${
-                      primaryBackgroundDisabled
-                        ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed pointer-events-none border-graphite/10 shadow-none'
-                        : isCanvasEmpty
-                          ? 'bg-pencil text-bone border-transparent hover:bg-pencil/90 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-pencil/15'
-                        : 'bg-white text-graphite border-nonrepro/25 hover:border-nonrepro hover:text-nonrepro hover:scale-[1.01] active:scale-[0.99] cursor-pointer'
+                    onClick={handleCreateFlyerMobile}
+                    disabled={!hasDetailsForCreate}
+                    className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 text-base font-bold rounded-xl shadow-md transition-all duration-200 border border-transparent font-display min-h-[48px] ${
+                      !hasDetailsForCreate
+                        ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed shadow-none'
+                        : 'bg-pencil text-bone hover:bg-pencil/90 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-pencil/15'
                     }`}
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12" />
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                     </svg>
-                    {primaryBackgroundLabel}
+                    Create Flyer
                   </button>
-                  {isCanvasEmpty && !hasDetailsForCreate && (
-                    <p className="text-[11px] leading-snug text-graphite-muted">
-                      Fill in the details first.
-                    </p>
-                  )}
-
-                  <form onSubmit={handleKeywordSearch} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={searchKeywords}
-                      onChange={(event) => setSearchKeywords(event.target.value)}
-                      placeholder="Search backgrounds..."
-                      className="flex-1 min-w-0 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg px-3 py-3 md:py-2 text-base md:text-xs text-graphite placeholder-graphite-muted/50 focus:outline-none transition-all min-h-[44px] md:min-h-0"
-                    />
+                </div>
+              </>
+            ) : (
+              // Stage 2: Preview & edit
+              selectedTextNode ? (
+                <div className="block">
+                  <TextControls 
+                    onFontChange={() => stageRef.current?.batchDraw()} 
+                    onBack={() => selectNodes([])}
+                  />
+                </div>
+              ) : (
+                <>
+                  {backgroundSection}
+                  <div className="mt-auto pt-2">
                     <button
-                      type="submit"
-                      disabled={isFetchingOrLoading || !searchKeywords.trim()}
-                      className={`inline-flex items-center justify-center px-4 py-3 md:px-3 md:py-2 text-base md:text-xs font-semibold rounded-lg border transition-all duration-200 font-display flex-shrink-0 min-h-[44px] md:min-h-0 ${
-                        isFetchingOrLoading || !searchKeywords.trim()
-                          ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed border-graphite/10'
-                          : 'bg-nonrepro/10 text-nonrepro border-nonrepro/25 hover:bg-nonrepro/20 hover:border-nonrepro/40 cursor-pointer'
-                      }`}
-                      aria-label="Search backgrounds"
+                      id="start-over-btn-mobile"
+                      type="button"
+                      onClick={handleResetMobile}
+                      className="w-full inline-flex items-center justify-center px-4 py-3 border border-graphite/15 hover:border-pencil/30 hover:text-pencil text-sm font-semibold rounded-lg text-graphite-muted bg-transparent hover:bg-pencil/5 transition-all duration-200 cursor-pointer min-h-[44px] md:min-h-0"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
+                      Start Over
                     </button>
-                  </form>
-
-                  {showNoImagesMessage && (
-                    <p className="rounded-lg border border-pencil/15 bg-pencil/5 px-3 py-2 text-[11px] leading-snug text-graphite-muted">
-                      No images found &mdash; try a different keyword or upload your own.
-                    </p>
-                  )}
-
-                  <div className="space-y-3 rounded-lg border border-graphite/10 bg-white/55 p-3">
-                    <label className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-semibold text-graphite">Background Blur</span>
-                        <span className="text-[10px] font-mono text-graphite-muted">{backgroundBlur}px</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={20}
-                        step={1}
-                        value={backgroundBlur}
-                        onChange={(event) => setBackgroundBlur(Number(event.target.value))}
-                        className="w-full accent-nonrepro py-3 md:py-1.5"
-                      />
-                    </label>
-
-                    <label className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-semibold text-graphite">Background Opacity</span>
-                        <span className="text-[10px] font-mono text-graphite-muted">{backgroundOpacity}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={backgroundOpacity}
-                        onChange={(event) => setBackgroundOpacity(Number(event.target.value))}
-                        title="0 = hidden; 50 = normal; 100 = black"
-                        className="w-full accent-nonrepro py-3 md:py-1.5"
-                      />
-                    </label>
                   </div>
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="bg-upload-input"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm md:text-xs font-semibold rounded-lg border border-dashed border-nonrepro/35 text-graphite-muted hover:border-nonrepro hover:text-nonrepro hover:bg-nonrepro/5 transition-all duration-200 cursor-pointer font-display min-h-[44px] md:min-h-0"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    Upload Background
-                  </button>
-
-                  <input
-                    ref={imageFileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageFileUpload}
-                    className="hidden"
-                    id="image-upload-input"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => imageFileInputRef.current?.click()}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm md:text-xs font-semibold rounded-lg border border-dashed border-pencil/35 text-graphite-muted hover:border-pencil hover:text-pencil hover:bg-pencil/5 transition-all duration-200 cursor-pointer font-display min-h-[44px] md:min-h-0"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Upload Logo / Image
-                  </button>
-                </section>
-
-                <div className="mt-auto pt-2">
-                  <button
-                    id="start-over-btn"
-                    type="button"
-                    onClick={handleReset}
-                    className="w-full inline-flex items-center justify-center px-4 py-3 md:py-2.5 border border-graphite/15 hover:border-pencil/30 hover:text-pencil text-sm md:text-xs font-semibold rounded-lg text-graphite-muted bg-transparent hover:bg-pencil/5 transition-all duration-200 cursor-pointer min-h-[44px] md:min-h-0"
-                  >
-                    Start Over
-                  </button>
-                </div>
-              </div>
-            </>
+                </>
+              )
+            )
           ) : (
-            <>
-              <section className="space-y-3">
-                <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Campaign Type</h2>
-                <div className="flex flex-wrap gap-2">
-                  {FLYER_TYPES.map((flyerType) => {
-                    const isActive = type === flyerType.key;
-                    return (
-                      <button
-                        key={flyerType.key}
-                        type="button"
-                        onClick={() => handleTypeChange(flyerType.key)}
-                        className={`flex-1 min-w-[5.75rem] px-3 py-3 md:py-2 rounded-lg text-base md:text-sm font-semibold border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-nonrepro focus:ring-offset-2 focus:ring-offset-bone-light min-h-[44px] md:min-h-0 ${
-                          isActive
-                            ? 'bg-nonrepro/10 border-nonrepro text-nonrepro shadow-sm'
-                            : 'bg-white border-nonrepro/25 text-graphite-muted hover:text-graphite hover:border-nonrepro/50'
-                        }`}
-                      >
-                        {flyerType.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Canvas Size</h2>
-                <div className="flex gap-1.5">
-                  {FLYER_SIZE_INFO.map((s) => {
-                    const isActive = size === s.key;
-                    return (
-                      <button
-                        key={s.key}
-                        type="button"
-                        onClick={() => handleSizeChange(s.key)}
-                        title={s.blurb}
-                        className={`flex-1 flex flex-col items-center justify-center gap-1 px-1.5 py-3 md:py-2.5 rounded-lg text-center transition-all duration-200 border min-h-[56px] md:min-h-[48px] ${
-                          isActive
-                            ? 'bg-nonrepro/10 border-nonrepro text-nonrepro ring-1 ring-nonrepro/25 shadow-sm'
-                            : 'bg-white border-nonrepro/20 text-graphite-muted hover:border-nonrepro/45 hover:text-graphite'
-                        }`}
-                      >
-                        <span className="text-[11px] font-bold font-display leading-tight">{s.label}</span>
-                        <span className="text-[9px] font-mono opacity-70">{s.aspect}</span>
-                        {s.platforms && (
-                          <div className="flex gap-1 items-center justify-center mt-0.5 opacity-80">
-                            {s.platforms.map((plat) => (
-                              <PlatformIcon key={plat} name={plat} />
-                            ))}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                {currentSizeInfo && (
-                  <p className="text-[10px] text-graphite-muted leading-snug">
-                    {currentSizeInfo.blurb}
-                  </p>
-                )}
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Details</h2>
-                <form className="space-y-3" onSubmit={(event) => event.preventDefault()}>
-                  {fieldDefinitions.map((field) => {
-                    const value = fields[field.key] || '';
-                    const targetKey = (type === 'event' && field.key === 'endTime') ? 'startTime' : field.key;
-                    const hasTextNode = textNodes.some((n) => n.id === targetKey);
-
-                    return (
-                      <div key={field.key} className="flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between">
-                          <label htmlFor={`field-${field.key}`} className="text-xs font-semibold text-graphite">
-                            {field.label}
-                          </label>
-                          {hasTextNode && (
-                            <button
-                              type="button"
-                              onClick={() => selectNodes([targetKey])}
-                              className="text-[11px] font-semibold text-pencil hover:text-pencil/80 flex items-center gap-1 cursor-pointer min-h-[30px] focus:outline-none"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                              </svg>
-                              Style
-                            </button>
-                          )}
-                        </div>
-                        {field.inputType === 'textarea' || (field.inputType === undefined && field.multiline) ? (
-                          <textarea
-                            id={`field-${field.key}`}
-                            name={field.key}
-                            placeholder={field.placeholder}
-                            value={value}
-                            onChange={(event) => handleFieldChange(field.key, event.target.value)}
-                            rows={3}
-                            className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none resize-y min-h-[44px]"
-                          />
-                        ) : field.inputType === 'date' ? (
-                          <input
-                            type="date"
-                            id={`field-${field.key}`}
-                            name={field.key}
-                            placeholder={field.placeholder}
-                            value={value}
-                            onChange={(event) => handleFieldChange(field.key, event.target.value)}
-                            className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
-                          />
-                        ) : field.inputType === 'time' ? (
-                          <input
-                            type="time"
-                            id={`field-${field.key}`}
-                            name={field.key}
-                            placeholder={field.placeholder}
-                            value={value}
-                            onChange={(event) => handleFieldChange(field.key, event.target.value)}
-                            className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
-                          />
-                        ) : (
-                          <input
-                            type="text"
-                            id={`field-${field.key}`}
-                            name={field.key}
-                            placeholder={field.placeholder}
-                            value={value}
-                            onChange={(event) => handleFieldChange(field.key, event.target.value)}
-                            className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-3 md:py-2.5 text-base md:text-sm text-graphite placeholder-graphite-muted/50 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro transition-all duration-200 focus:outline-none min-h-[44px] md:min-h-0"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </form>
-              </section>
-
-              <section className="space-y-3">
-                <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Background</h2>
-                <button
-                  type="button"
-                  onClick={handleShuffle}
-                  disabled={primaryBackgroundDisabled}
-                  title={primaryBackgroundTitle}
-                  className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-base md:text-sm font-semibold rounded-lg shadow-sm transition-all duration-200 border font-display min-h-[44px] md:min-h-0 ${
-                    primaryBackgroundDisabled
-                      ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed pointer-events-none border-graphite/10 shadow-none'
-                      : isCanvasEmpty
-                        ? 'bg-pencil text-bone border-transparent hover:bg-pencil/90 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-pencil/15'
-                      : 'bg-white text-graphite border-nonrepro/25 hover:border-nonrepro hover:text-nonrepro hover:scale-[1.01] active:scale-[0.99] cursor-pointer'
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12" />
-                  </svg>
-                  {primaryBackgroundLabel}
-                </button>
-                {isCanvasEmpty && !hasDetailsForCreate && (
-                  <p className="text-[11px] leading-snug text-graphite-muted">
-                    Fill in the details first.
-                  </p>
-                )}
-
-                <form onSubmit={handleKeywordSearch} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={searchKeywords}
-                    onChange={(event) => setSearchKeywords(event.target.value)}
-                    placeholder="Search backgrounds..."
-                    className="flex-1 min-w-0 bg-white border border-graphite/15 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro rounded-lg px-3 py-3 md:py-2 text-base md:text-xs text-graphite placeholder-graphite-muted/50 focus:outline-none transition-all min-h-[44px] md:min-h-0"
+            // Desktop Layout (exact same logic as original code)
+            selectedTextNode ? (
+              <>
+                <div className="block md:hidden">
+                  <TextControls 
+                    onFontChange={() => stageRef.current?.batchDraw()} 
+                    onBack={() => selectNodes([])}
                   />
-                  <button
-                    type="submit"
-                    disabled={isFetchingOrLoading || !searchKeywords.trim()}
-                    className={`inline-flex items-center justify-center px-4 py-3 md:px-3 md:py-2 text-base md:text-xs font-semibold rounded-lg border transition-all duration-200 font-display flex-shrink-0 min-h-[44px] md:min-h-0 ${
-                      isFetchingOrLoading || !searchKeywords.trim()
-                        ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed border-graphite/10'
-                        : 'bg-nonrepro/10 text-nonrepro border-nonrepro/25 hover:bg-nonrepro/20 hover:border-nonrepro/40 cursor-pointer'
-                    }`}
-                    aria-label="Search backgrounds"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </button>
-                </form>
-
-                {showNoImagesMessage && (
-                  <p className="rounded-lg border border-pencil/15 bg-pencil/5 px-3 py-2 text-[11px] leading-snug text-graphite-muted">
-                    No images found &mdash; try a different keyword or upload your own.
-                  </p>
-                )}
-
-                <div className="space-y-3 rounded-lg border border-graphite/10 bg-white/55 p-3">
-                  <label className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold text-graphite">Background Blur</span>
-                      <span className="text-[10px] font-mono text-graphite-muted">{backgroundBlur}px</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={20}
-                      step={1}
-                      value={backgroundBlur}
-                      onChange={(event) => setBackgroundBlur(Number(event.target.value))}
-                      className="w-full accent-nonrepro py-3 md:py-1.5"
-                    />
-                  </label>
-
-                  <label className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold text-graphite">Background Opacity</span>
-                      <span className="text-[10px] font-mono text-graphite-muted">{backgroundOpacity}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={backgroundOpacity}
-                      onChange={(event) => setBackgroundOpacity(Number(event.target.value))}
-                      title="0 = hidden; 50 = normal; 100 = black"
-                      className="w-full accent-nonrepro py-3 md:py-1.5"
-                    />
-                  </label>
                 </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="bg-upload-input"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm md:text-xs font-semibold rounded-lg border border-dashed border-nonrepro/35 text-graphite-muted hover:border-nonrepro hover:text-nonrepro hover:bg-nonrepro/5 transition-all duration-200 cursor-pointer font-display min-h-[44px] md:min-h-0"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  Upload Background
-                </button>
-
-                <input
-                  ref={imageFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageFileUpload}
-                  className="hidden"
-                  id="image-upload-input"
-                />
-                <button
-                  type="button"
-                  onClick={() => imageFileInputRef.current?.click()}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm md:text-xs font-semibold rounded-lg border border-dashed border-pencil/35 text-graphite-muted hover:border-pencil hover:text-pencil hover:bg-pencil/5 transition-all duration-200 cursor-pointer font-display min-h-[44px] md:min-h-0"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Upload Logo / Image
-                </button>
-              </section>
-
-              <div className="mt-auto pt-2">
-                <button
-                  id="start-over-btn"
-                  type="button"
-                  onClick={handleReset}
-                  className="w-full inline-flex items-center justify-center px-4 py-3 md:py-2.5 border border-graphite/15 hover:border-pencil/30 hover:text-pencil text-sm md:text-xs font-semibold rounded-lg text-graphite-muted bg-transparent hover:bg-pencil/5 transition-all duration-200 cursor-pointer min-h-[44px] md:min-h-0"
-                >
-                  Start Over
-                </button>
-              </div>
-            </>
+                <div className="hidden md:flex flex-col gap-5">
+                  {campaignTypeSection}
+                  {canvasSizeSection}
+                  {detailsFormSection}
+                  {backgroundSection}
+                  {startOverButton}
+                </div>
+              </>
+            ) : (
+              <>
+                {campaignTypeSection}
+                {canvasSizeSection}
+                {detailsFormSection}
+                {backgroundSection}
+                {startOverButton}
+              </>
+            )
           )}
         </div>
       </aside>
@@ -2201,10 +2061,12 @@ export const EditorScreen: React.FC = () => {
         the user can preview it via PreviewOverlay and export the flyer seamlessly.
       */}
       <main
-        className={`bg-bone flex-col lg:flex-row items-center justify-center gap-4 relative overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2 ${
+        className={`bg-bone flex-col lg:flex-row items-center justify-center gap-4 overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2 ${
           isMobileLayout
-            ? 'absolute opacity-0 pointer-events-none -z-50 w-full h-full flex-none'
-            : 'flex-1 flex'
+            ? (mobileStage === 'edit'
+                ? 'flex-1 flex relative'
+                : 'absolute top-0 left-0 opacity-0 pointer-events-none -z-50 w-full h-full flex-none')
+            : 'flex-1 flex relative'
         }`}
         style={isMobileLayout && isKeyboardOpen ? { height: '180px', flex: '0 0 180px' } : undefined}
       >
