@@ -6,7 +6,8 @@ export type AnalyticsEvent =
   | { name: 'flyer_exported'; properties: { format: 'png' | 'jpeg' | 'svg'; width: number; height: number } }
   | { name: 'image_uploaded'; properties: { source: 'unsplash' | 'upload' } }
   | { name: 'campaign_type_selected'; properties: { flyerType: FlyerType } }
-  | { name: 'size_changed'; properties: { size: SizeKey } };
+  | { name: 'size_changed'; properties: { size: SizeKey } }
+  | { name: 'review_opened'; properties: { state: string; preset?: string } };
 
 /**
  * Initializes PostHog analytics if running in production.
