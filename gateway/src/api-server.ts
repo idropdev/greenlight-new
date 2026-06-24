@@ -9,6 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({
+  // CORS origin configuration for the React dev server / production frontend
   origin: process.env.GREENLIGHT_BASE_URL || 'http://localhost:5173',
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type']
