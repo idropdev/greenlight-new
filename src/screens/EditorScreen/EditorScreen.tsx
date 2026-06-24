@@ -2887,12 +2887,14 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
         exportFlyer={handleConfirmExportInEditor}
       />
 
-      <ReviewOverlay
-        loading={reviewLoading}
-        session={reviewSession}
-        error={reviewError}
-        handleRetry={handleReviewRetry}
-      />
+      {sessionId && (
+        <ReviewOverlay
+          loading={reviewLoading}
+          session={reviewSession}
+          error={reviewError}
+          handleRetry={handleReviewRetry}
+        />
+      )}
     </div>
   );
 };

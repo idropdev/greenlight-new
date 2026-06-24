@@ -16,6 +16,10 @@ export const ReviewOverlay: React.FC<ReviewOverlayProps> = ({
   error,
   handleRetry,
 }) => {
+  if (!loading && !error && !session) {
+    return null;
+  }
+
   const hasActiveDesign = session?.design && (session.state === 'posted' || session.state === 'in_review');
   if (!loading && !error && hasActiveDesign) {
     return null;
