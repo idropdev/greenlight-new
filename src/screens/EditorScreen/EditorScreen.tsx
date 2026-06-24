@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import Konva from 'konva';
 import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer, Rect, Group, Line } from 'react-konva';
 
 import { useFlyerStore } from '../../features/flyer/flyerStore';
+import { useReviewSession } from '../../features/review/useReviewSession';
+import { ReviewOverlay } from '../../features/review/ReviewOverlay';
+import { buildDesignFromState } from '../../features/review/buildResult';
 import type { FlyerType, ImageNode, SizeKey, TextNode } from '../../features/flyer/flyerStore';
 import { getDimensionsForSize, FLYER_SIZE_INFO } from '../../features/flyer/sizes';
 import { fieldConfig } from '../../features/flyer/fieldConfig';
@@ -377,7 +381,42 @@ function PlatformIcon({ name }: { name: string }) {
   }
 }
 
-export const EditorScreen: React.FC = () => {
+interface EditorScreenProps {
+  isReviewMode?: boolean;
+  reviewBgColor?: string | null;
+  reviewHeader?: React.ReactNode | ((openExport: () => void) => React.ReactNode);
+  reviewSidebar?: React.ReactNode | ((openExport: () => void) => React.ReactNode);
+  onReviewExport?: (format: string, resolution: string) => void;
+}
+
+export const EditorScreen: React.FC<EditorScreenProps> = ({
+  isReviewMode = false,
+  reviewBgColor: propsReviewBgColor = null,
+  reviewHeader = null,
+  reviewSidebar = null,
+  onReviewExport,
+}) => {
+  const { sessionId } = useParams<{ sessionId: string }>();
+
+  // Review session state
+  const {
+    loading: reviewLoading,
+    session: reviewSession,
+    error: reviewError,
+    reviewBgColor: hookReviewBgColor,
+    isPosting: reviewPosting,
+    postError: reviewPostError,
+    humanNote,
+    setHumanNote,
+    handleSendBack,
+    handleReviewExport,
+    handleRetry: handleReviewRetry,
+  } = useReviewSession(sessionId);
+
+  const [showSendBackModal, setShowSendBackModal] = useState(false);
+
+  const effectiveBgColor = sessionId ? hookReviewBgColor : propsReviewBgColor;
+
   const type = useFlyerStore((state) => state.type);
   const size = useFlyerStore((state) => state.size);
   const fields = useFlyerStore((state) => state.fields);
@@ -540,6 +579,78 @@ export const EditorScreen: React.FC = () => {
   const { search, autoSearch, shuffle, isLoading: searchLoading, error: searchError, photos, noResults } = useUnsplashSearch();
   const [imgElement, imgStatus] = useImage(bgImageUrl);
   const { exportFlyer, isExporting, generatePreviewUrl } = useExport(stageRef, transformerRef, imageTransformerRef);
+
+  const [showCopiedToast, setShowCopiedToast] = useState(false);
+  const [fallbackCopyText, setFallbackCopyText] = useState<string | null>(null);
+  const [fallbackErrorMsg, setFallbackErrorMsg] = useState<string | null>(null);
+
+  const handleCopyJsonClick = async () => {
+    try {
+      const state = useFlyerStore.getState();
+      const finalDesign = buildDesignFromState(
+        state,
+        effectiveBgColor,
+        reviewSession?.design?.meta,
+        reviewSession?.design?.layers?.overlay
+      );
+      
+      const jsonText = JSON.stringify(finalDesign, null, 2);
+      
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(jsonText);
+        setShowCopiedToast(true);
+        setTimeout(() => setShowCopiedToast(false), 2000);
+      } else {
+        setFallbackErrorMsg("Clipboard API not available (e.g. non-secure HTTP context). Please copy manually below:");
+        setFallbackCopyText(jsonText);
+      }
+      
+      trackEvent('design_copied_json', { sessionId });
+    } catch (err: unknown) {
+      console.error('Failed to copy design as JSON:', err);
+      try {
+        const state = useFlyerStore.getState();
+        const finalDesign = buildDesignFromState(
+          state,
+          effectiveBgColor,
+          reviewSession?.design?.meta,
+          reviewSession?.design?.layers?.overlay
+        );
+        const jsonText = JSON.stringify(finalDesign, null, 2);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        setFallbackErrorMsg(errorMsg || "Failed to copy directly. Please copy manually below:");
+        setFallbackCopyText(jsonText);
+      } catch (innerErr) {
+        console.error('Failed to build fallback design:', innerErr);
+      }
+    }
+  };
+
+  const renderCopyJsonButton = (isMobile: boolean) => (
+    <button
+      id={isMobile ? "copy-json-btn-mobile" : "copy-json-btn"}
+      onClick={handleCopyJsonClick}
+      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all duration-200 border border-transparent font-display min-h-[44px] md:min-h-0 bg-ochre text-graphite hover:bg-ochre/90 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-ochre/15"
+    >
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+      </svg>
+      {isMobile ? 'Copy JSON' : 'Copy as JSON'}
+    </button>
+  );
+
+  const handleConfirmExportInEditor = async (width: number, height: number, format: 'png' | 'jpeg' | 'svg') => {
+    await exportFlyer(width, height, format);
+    if (sessionId) {
+      try {
+        await handleReviewExport(format, `${width}x${height}`);
+      } catch (err) {
+        console.error('Failed to post review export:', err);
+      }
+    } else if (isReviewMode && onReviewExport) {
+      onReviewExport(format, `${width}x${height}`);
+    }
+  };
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
@@ -1601,7 +1712,7 @@ export const EditorScreen: React.FC = () => {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
-          Export
+          {sessionId ? 'Approve & Download' : 'Export'}
         </>
       )}
     </button>
@@ -1880,7 +1991,7 @@ export const EditorScreen: React.FC = () => {
   );
 
   const startOverButton = (
-    <div className="mt-auto pt-2">
+    <div className="mt-auto pt-2 flex flex-col gap-2">
       <button
         id="start-over-btn"
         type="button"
@@ -1889,187 +2000,207 @@ export const EditorScreen: React.FC = () => {
       >
         Start Over
       </button>
+      {sessionId && (
+        <button
+          type="button"
+          onClick={() => setShowSendBackModal(true)}
+          className="text-[10px] text-graphite-muted/50 hover:text-graphite-muted underline cursor-pointer text-center"
+        >
+          Dev: Send back to gateway (POST)
+        </button>
+      )}
     </div>
   );
 
   return (
     <div
       style={isMobileLayout ? { height: `${viewportHeight}px` } : undefined}
-      className="h-dvh bg-bone text-graphite flex flex-col md:flex-row items-stretch relative overflow-hidden"
+      className={`h-dvh bg-bone text-graphite flex flex-col ${isReviewMode ? '' : 'md:flex-row'} items-stretch relative overflow-hidden`}
     >
-      {/* Mobile Top Bar */}
-      <div className="flex md:hidden h-14 bg-bone-light border-b border-nonrepro/25 px-4 items-center justify-between flex-shrink-0 z-40 pt-safe">
-        {mobileStage === 'edit' ? (
-          <button
-            onClick={() => {
-              selectNodes([]);
-              setMobileStage('details');
-            }}
-            className="flex items-center gap-1.5 text-sm font-bold text-pencil hover:text-pencil/80 focus:outline-none cursor-pointer"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-            </svg>
-            Details
-          </button>
-        ) : (
-          <div className="flex flex-col">
-            <span className="text-sm font-bold tracking-tight text-graphite font-display leading-none">Greenlight</span>
-            <span className="text-[10px] text-graphite-muted mt-0.5">Paste-up flyer editor</span>
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          {mobileStage === 'edit' && (
-            <>
-              {renderPreviewButton(true)}
-              {renderDownloadButton(true)}
-            </>
-          )}
-        </div>
-      </div>
+      {isReviewMode && reviewHeader && (
+        typeof reviewHeader === 'function' ? reviewHeader(handleOpenExportModal) : reviewHeader
+      )}
 
-      {/* Desktop Download Button Container */}
-      <div className="hidden md:block absolute top-4 right-4 z-40">
-        <div className="flex items-center gap-2">
-          {renderPreviewButton(false)}
-          {renderDownloadButton(false)}
-        </div>
-      </div>
-
-      <aside
-        className={`w-full md:w-[22rem] lg:w-96 bg-bone-light border-t md:border-t-0 md:border-r border-nonrepro/25 z-30 flex flex-col overflow-hidden rounded-t-2xl md:rounded-t-none order-2 md:order-1 ${
-          isMobileLayout
-            ? 'flex-1 min-h-0 rounded-t-none border-t-0 overflow-x-hidden touch-pan-y'
-            : 'md:h-dvh'
-        }`}
-      >
-        {/* Mobile Drawer Header */}
-        {!isMobileLayout && (
-          <div 
-            className="flex md:hidden items-center justify-between px-5 h-14 border-b border-nonrepro/15 cursor-pointer select-none flex-shrink-0 bg-bone-light"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-nonrepro animate-pulse" />
-              <span className="text-sm font-bold tracking-tight text-graphite font-display">
-                {isExpanded ? 'Collapse Editor Controls' : 'Expand Editor Controls'}
-              </span>
+      <div className="flex-1 flex flex-col md:flex-row items-stretch overflow-hidden relative">
+        {!isReviewMode && (
+          <>
+            {/* Mobile Top Bar */}
+            <div className="flex md:hidden h-14 bg-bone-light border-b border-nonrepro/25 px-4 items-center justify-between flex-shrink-0 z-40 pt-safe">
+              {mobileStage === 'edit' ? (
+                <button
+                  onClick={() => {
+                    selectNodes([]);
+                    setMobileStage('details');
+                  }}
+                  className="flex items-center gap-1.5 text-sm font-bold text-pencil hover:text-pencil/80 focus:outline-none cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Details
+                </button>
+              ) : (
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold tracking-tight text-graphite font-display leading-none">Greenlight</span>
+                  <span className="text-[10px] text-graphite-muted mt-0.5">Paste-up flyer editor</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                {mobileStage === 'edit' && (
+                  <>
+                    {renderCopyJsonButton(true)}
+                    {renderPreviewButton(true)}
+                    {renderDownloadButton(true)}
+                  </>
+                )}
+              </div>
             </div>
-            <button type="button" className="text-graphite-muted focus:outline-none min-h-[44px] min-w-[44px] flex items-center justify-center">
-              <svg className={`w-5 h-5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          </div>
-        )}
 
-        {/* Scrollable Content Container */}
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-5 editor-sidebar">
-          {/* Title Section (Desktop only) */}
-          <div className="hidden md:block space-y-1">
-            <h1 className="text-2xl font-bold tracking-tight text-graphite font-display">Greenlight</h1>
-            <p className="text-graphite-muted text-xs">Paste-up flyer editor</p>
-          </div>
+            {/* Desktop Download Button Container */}
+            <div className="hidden md:block absolute top-4 right-4 z-40">
+              <div className="flex items-center gap-2">
+                {renderCopyJsonButton(false)}
+                {renderPreviewButton(false)}
+                {renderDownloadButton(false)}
+              </div>
+            </div>
 
-          {isMobileLayout ? (
-            // Mobile Layout Stepped Flow
-            mobileStage === 'details' ? (
-              // Stage 1: Fill out details
-              <>
-                {campaignTypeSection}
-                {canvasSizeSection}
-                {detailsFormSection}
-                {/* sticky "Create Flyer" button at bottom */}
-                <div className="mt-auto pt-4 sticky bottom-0 bg-bone-light pb-2">
-                  <button
-                    type="button"
-                    onClick={handleCreateFlyerMobile}
-                    disabled={!hasDetailsForCreate}
-                    className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 text-base font-bold rounded-xl shadow-md transition-all duration-200 border border-transparent font-display min-h-[48px] ${
-                      !hasDetailsForCreate
-                        ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed shadow-none'
-                        : 'bg-pencil text-bone hover:bg-pencil/90 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-pencil/15'
-                    }`}
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            <aside
+              className={`w-full md:w-[22rem] lg:w-96 bg-bone-light border-t md:border-t-0 md:border-r border-nonrepro/25 z-30 flex flex-col overflow-hidden rounded-t-2xl md:rounded-t-none order-2 md:order-1 ${
+                isMobileLayout
+                  ? 'flex-1 min-h-0 rounded-t-none border-t-0 overflow-x-hidden touch-pan-y'
+                  : 'md:h-dvh'
+              }`}
+            >
+              {/* Mobile Drawer Header */}
+              {!isMobileLayout && (
+                <div 
+                  className="flex md:hidden items-center justify-between px-5 h-14 border-b border-nonrepro/15 cursor-pointer select-none flex-shrink-0 bg-bone-light"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-nonrepro animate-pulse" />
+                    <span className="text-sm font-bold tracking-tight text-graphite font-display">
+                      {isExpanded ? 'Collapse Editor Controls' : 'Expand Editor Controls'}
+                    </span>
+                  </div>
+                  <button type="button" className="text-graphite-muted focus:outline-none min-h-[44px] min-w-[44px] flex items-center justify-center">
+                    <svg className={`w-5 h-5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                     </svg>
-                    Create Flyer
                   </button>
                 </div>
-              </>
-            ) : (
-              // Stage 2: Preview & edit
-              selectedTextNode ? (
-                <div className="block">
-                  <TextControls 
-                    onFontChange={() => stageRef.current?.batchDraw()} 
-                    onBack={() => selectNodes([])}
-                  />
-                </div>
-              ) : (
-                <>
-                  {backgroundSection}
-                  <div className="mt-auto pt-2">
-                    <button
-                      id="start-over-btn-mobile"
-                      type="button"
-                      onClick={handleResetMobile}
-                      className="w-full inline-flex items-center justify-center px-4 py-3 border border-graphite/15 hover:border-pencil/30 hover:text-pencil text-sm font-semibold rounded-lg text-graphite-muted bg-transparent hover:bg-pencil/5 transition-all duration-200 cursor-pointer min-h-[44px] md:min-h-0"
-                    >
-                      Start Over
-                    </button>
-                  </div>
-                </>
-              )
-            )
-          ) : (
-            // Desktop Layout (exact same logic as original code)
-            selectedTextNode ? (
-              <>
-                <div className="block md:hidden">
-                  <TextControls 
-                    onFontChange={() => stageRef.current?.batchDraw()} 
-                    onBack={() => selectNodes([])}
-                  />
-                </div>
-                <div className="hidden md:flex flex-col gap-5">
-                  {campaignTypeSection}
-                  {canvasSizeSection}
-                  {detailsFormSection}
-                  {backgroundSection}
-                  {startOverButton}
-                </div>
-              </>
-            ) : (
-              <>
-                {campaignTypeSection}
-                {canvasSizeSection}
-                {detailsFormSection}
-                {backgroundSection}
-                {startOverButton}
-              </>
-            )
-          )}
-        </div>
-      </aside>
+              )}
 
-      {/* 
-        On mobile, the live flyer canvas is hidden by default and positioned absolutely behind 
-        the controls. This lets the editor open directly into the editing controls, avoiding 
-        the shrunk canvas. The Konva stage still renders and executes in the background so 
-        the user can preview it via PreviewOverlay and export the flyer seamlessly.
-      */}
-      <main
-        className={`bg-bone flex-col lg:flex-row items-center justify-center gap-4 overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 md:pt-20 pt-4 order-1 md:order-2 ${
-          isMobileLayout
-            ? (mobileStage === 'edit'
-                ? 'flex-1 flex relative'
-                : 'absolute top-0 left-0 opacity-0 pointer-events-none -z-50 w-full h-full flex-none')
-            : 'flex-1 flex relative'
-        }`}
-        style={isMobileLayout && isKeyboardOpen ? { height: '180px', flex: '0 0 180px' } : undefined}
-      >
+              {/* Scrollable Content Container */}
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-5 editor-sidebar">
+                {/* Title Section (Desktop only) */}
+                <div className="hidden md:block space-y-1">
+                  <h1 className="text-2xl font-bold tracking-tight text-graphite font-display">Greenlight</h1>
+                  <p className="text-graphite-muted text-xs">Paste-up flyer editor</p>
+                </div>
+
+                {isMobileLayout ? (
+                  // Mobile Layout Stepped Flow
+                  mobileStage === 'details' ? (
+                    // Stage 1: Fill out details
+                    <>
+                      {campaignTypeSection}
+                      {canvasSizeSection}
+                      {detailsFormSection}
+                      {/* sticky "Create Flyer" button at bottom */}
+                      <div className="mt-auto pt-4 sticky bottom-0 bg-bone-light pb-2">
+                        <button
+                          type="button"
+                          onClick={handleCreateFlyerMobile}
+                          disabled={!hasDetailsForCreate}
+                          className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 text-base font-bold rounded-xl shadow-md transition-all duration-200 border border-transparent font-display min-h-[48px] ${
+                            !hasDetailsForCreate
+                              ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed shadow-none'
+                              : 'bg-pencil text-bone hover:bg-pencil/90 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-pencil/15'
+                          }`}
+                        >
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                          Create Flyer
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    // Stage 2: Preview & edit
+                    selectedTextNode ? (
+                      <div className="block">
+                        <TextControls 
+                          onFontChange={() => stageRef.current?.batchDraw()} 
+                          onBack={() => selectNodes([])}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        {backgroundSection}
+                        <div className="mt-auto pt-2">
+                          <button
+                            id="start-over-btn-mobile"
+                            type="button"
+                            onClick={handleResetMobile}
+                            className="w-full inline-flex items-center justify-center px-4 py-3 border border-graphite/15 hover:border-pencil/30 hover:text-pencil text-sm font-semibold rounded-lg text-graphite-muted bg-transparent hover:bg-pencil/5 transition-all duration-200 cursor-pointer min-h-[44px] md:min-h-0"
+                          >
+                            Start Over
+                          </button>
+                        </div>
+                      </>
+                    )
+                  )
+                ) : (
+                  // Desktop Layout (exact same logic as original code)
+                  selectedTextNode ? (
+                    <>
+                      <div className="block md:hidden">
+                        <TextControls 
+                          onFontChange={() => stageRef.current?.batchDraw()} 
+                          onBack={() => selectNodes([])}
+                        />
+                      </div>
+                      <div className="hidden md:flex flex-col gap-5">
+                        {campaignTypeSection}
+                        {canvasSizeSection}
+                        {detailsFormSection}
+                        {backgroundSection}
+                        {startOverButton}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {campaignTypeSection}
+                      {canvasSizeSection}
+                      {detailsFormSection}
+                      {backgroundSection}
+                      {startOverButton}
+                    </>
+                  )
+                )}
+              </div>
+            </aside>
+          </>
+        )}
+
+        {/* 
+          On mobile, the live flyer canvas is hidden by default and positioned absolutely behind 
+          the controls. This lets the editor open directly into the editing controls, avoiding 
+          the shrunk canvas. The Konva stage still renders and executes in the background so 
+          the user can preview it via PreviewOverlay and export the flyer seamlessly.
+        */}
+        <main
+          className={`bg-bone flex-col lg:flex-row items-center justify-center gap-4 overflow-hidden pasteup-grid min-h-0 p-4 md:p-6 ${isReviewMode ? '' : 'md:pt-20'} pt-4 order-1 md:order-2 ${
+            isMobileLayout
+              ? (mobileStage === 'edit'
+                  ? 'flex-1 flex relative'
+                  : 'absolute top-0 left-0 opacity-0 pointer-events-none -z-50 w-full h-full flex-none')
+              : 'flex-1 flex relative'
+          }`}
+          style={isMobileLayout && isKeyboardOpen ? { height: '180px', flex: '0 0 180px' } : undefined}
+        >
         <div className="flex-1 flex items-center justify-center w-full h-full min-h-0 min-w-0" ref={containerRef}>
           <div
             className="relative border border-nonrepro/25 rounded-lg overflow-hidden shadow-lg bg-bone-light flex items-center justify-center transition-all duration-300 touch-none"
@@ -2133,7 +2264,7 @@ export const EditorScreen: React.FC = () => {
               }}
             >
               <Layer>
-                <Rect x={0} y={0} width={trueWidth} height={trueHeight} fill="#f5efe4" />
+        <Rect x={0} y={0} width={trueWidth} height={trueHeight} fill={effectiveBgColor || "#f5efe4"} />
                 {showNoImagesMessage && (
                   <>
                     <Rect x={0} y={0} width={trueWidth} height={trueHeight} fill="#2D2D2A" />
@@ -2611,6 +2742,11 @@ export const EditorScreen: React.FC = () => {
         )}
       </main>
 
+      {isReviewMode && reviewSidebar && (
+        typeof reviewSidebar === 'function' ? reviewSidebar(handleOpenExportModal) : reviewSidebar
+      )}
+    </div>
+
       {toastMessage && (
         <div className="fixed bottom-4 right-4 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300 bg-pencil/95 border border-pencil/40 text-bone px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 backdrop-blur-md">
           <div className="flex flex-col">
@@ -2627,6 +2763,141 @@ export const EditorScreen: React.FC = () => {
         </div>
       )}
 
+      {showCopiedToast && (
+        <div className="fixed bottom-4 right-4 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300 bg-emerald-600/95 border border-emerald-500/40 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2.5 backdrop-blur-md">
+          <svg className="w-4 h-4 text-white flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="text-xs font-bold font-display uppercase tracking-wider">Copied to Clipboard!</span>
+        </div>
+      )}
+
+      {fallbackCopyText && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-graphite/85 backdrop-blur-md select-none animate-in fade-in duration-200"
+          onClick={() => setFallbackCopyText(null)}
+        >
+          <div
+            className="relative bg-bone-light border border-ochre/30 rounded-2xl p-6 shadow-2xl max-w-lg w-full flex flex-col gap-4 text-graphite animate-in zoom-in-95 duration-200"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-bold font-display uppercase tracking-tight text-graphite flex items-center gap-2">
+                <svg className="w-5 h-5 text-ochre" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Clipboard Access Blocked
+              </h3>
+              <p className="text-xs text-graphite-muted leading-relaxed">
+                {fallbackErrorMsg || "Your browser or environment blocked direct clipboard writing. Please copy the JSON manually below:"}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5 flex-1">
+              <textarea
+                readOnly
+                value={fallbackCopyText}
+                onFocus={(e) => e.target.select()}
+                onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                rows={10}
+                className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-2 text-xs font-mono text-graphite placeholder-graphite-muted/40 focus:border-ochre focus:ring-1 focus:ring-ochre focus:outline-none resize-none shadow-inner"
+              />
+            </div>
+
+            <div className="flex gap-3 justify-end mt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const textarea = document.querySelector('textarea[readonly]') as HTMLTextAreaElement;
+                  if (textarea) {
+                    textarea.focus();
+                    textarea.select();
+                  }
+                }}
+                className="px-4 py-2 border border-graphite/20 hover:bg-graphite/5 text-graphite text-xs font-bold rounded-lg cursor-pointer transition-all"
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                onClick={() => setFallbackCopyText(null)}
+                className="px-4 py-2 bg-graphite text-bone text-xs font-bold rounded-lg cursor-pointer hover:bg-graphite/90 transition-all shadow-md"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSendBackModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-graphite/80 backdrop-blur-sm select-none"
+          onClick={() => setShowSendBackModal(false)}
+        >
+          <div
+            className="relative bg-bone-light border border-nonrepro/35 rounded-2xl p-6 shadow-2xl max-w-sm md:max-w-md w-full flex flex-col gap-4 text-graphite text-left"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold font-display uppercase tracking-tight text-graphite">
+                Send Back to Agent
+              </h3>
+              <p className="text-xs text-graphite-muted leading-relaxed">
+                Provide feedback for the agent. They will review your changes and respond with a new draft.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="human-note" className="text-[10px] font-bold text-graphite uppercase font-mono tracking-wider">
+                Human Note (Feedback for Agent)
+              </label>
+              <textarea
+                id="human-note"
+                value={humanNote}
+                onChange={(e) => setHumanNote(e.target.value)}
+                placeholder="Suggest modifications or explain corrections..."
+                rows={4}
+                disabled={reviewPosting}
+                className="w-full bg-white border border-graphite/15 rounded-lg px-3 py-2 text-sm text-graphite placeholder-graphite-muted/40 focus:border-nonrepro focus:ring-1 focus:ring-nonrepro focus:outline-none resize-none"
+              />
+            </div>
+
+            {reviewPostError && (
+              <div className="border border-pencil/30 bg-pencil/5 p-3 rounded-lg text-xs text-pencil font-mono">
+                {reviewPostError}
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-end mt-2">
+              <button
+                type="button"
+                onClick={() => setShowSendBackModal(false)}
+                disabled={reviewPosting}
+                className="px-4 py-2 border border-graphite/20 hover:bg-graphite/5 text-graphite text-xs font-bold rounded-lg cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await handleSendBack();
+                    setShowSendBackModal(false);
+                  } catch (err) {
+                    console.error('Send back failed:', err);
+                  }
+                }}
+                disabled={reviewPosting}
+                className="px-4 py-2 bg-nonrepro text-bone text-xs font-bold rounded-lg cursor-pointer hover:bg-nonrepro/90 disabled:opacity-50"
+              >
+                {reviewPosting ? 'Sending...' : 'Send Back'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PreviewOverlay previewUrl={previewUrl} onClose={handleClosePreview} />
 
       <ExportDialog
@@ -2639,7 +2910,14 @@ export const EditorScreen: React.FC = () => {
         isGeneratingExportPreview={isGeneratingExportPreview}
         exportPreviewUrl={exportPreviewUrl}
         isExporting={isExporting}
-        exportFlyer={exportFlyer}
+        exportFlyer={handleConfirmExportInEditor}
+      />
+
+      <ReviewOverlay
+        loading={reviewLoading}
+        session={reviewSession}
+        error={reviewError}
+        handleRetry={handleReviewRetry}
       />
     </div>
   );

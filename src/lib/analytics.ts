@@ -7,7 +7,11 @@ export type AnalyticsEvent =
   | { name: 'image_uploaded'; properties: { source: 'unsplash' | 'upload' } }
   | { name: 'campaign_type_selected'; properties: { flyerType: FlyerType } }
   | { name: 'size_changed'; properties: { size: SizeKey } }
-  | { name: 'review_opened'; properties: { state: string; preset?: string } };
+  | { name: 'review_opened'; properties: { state: string; preset?: string } }
+  | { name: 'review_downloaded'; properties: { sessionId: string; format: string; resolution: string } }
+  | { name: 'review_sent_back'; properties: { sessionId: string } }
+  | { name: 'design_copied_json'; properties: { sessionId?: string } }
+  | { name: 'agent_feature_gap'; properties: { reason: string; preset?: string } };
 
 /**
  * Initializes PostHog analytics if running in production.
