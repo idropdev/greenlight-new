@@ -15,6 +15,10 @@ export interface A2uiDesign {
     };
     overlay: Array<any>;
   };
+  content?: {
+    flyer_type: string;
+    fields: Record<string, string>;
+  };
   meta?: {
     source_agent?: string;
     tenant?: string;

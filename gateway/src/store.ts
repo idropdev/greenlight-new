@@ -29,11 +29,22 @@ export class FileSessionStore implements ISessionStore {
           "session_id": "test-1234",
           "state": "posted",
           "design": {
-            "schema_version": "0.1.1",
+            "schema_version": "0.1.2",
             "canvas": {
               "preset": "square",
               "width": 1080,
               "height": 1080
+            },
+            "content": {
+              "flyer_type": "event",
+              "fields": {
+                "title": "Sunset Yoga Retreat",
+                "date": "Saturday, October 14",
+                "startTime": "6:00 PM",
+                "endTime": "10:00 PM",
+                "location": "Hawaii Beach Park",
+                "description": "Join us for a relaxing sunset yoga session with experienced coaches. Light snacks and beverages are included."
+              }
             },
             "layers": {
               "background": {
@@ -43,32 +54,20 @@ export class FileSessionStore implements ISessionStore {
               },
               "overlay": [
                 {
-                  "id": "el_1",
-                  "type": "text",
-                  "content": "Hawaii Yoga Retreat",
-                  "x": 0.1,
-                  "y": 0.25,
-                  "w": 0.8,
-                  "font": "Inter",
-                  "size": 64,
-                  "color": "#ffffff",
-                  "align": "center"
-                },
-                {
-                  "id": "el_2",
+                  "id": "image_logo",
                   "type": "image",
-                  "value": "https://greenlight.app/logo.png",
+                  "value": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?q=80&w=300",
                   "x": 0.4,
                   "y": 0.75,
                   "w": 0.2,
-                  "h": 0.1
+                  "h": 0.15
                 }
               ]
             },
             "meta": {
               "source_agent": "vayu",
               "tenant": "vayu",
-              "intent": "event flyer"
+              "intent": "sunset yoga flyer"
             }
           },
           "result": null,

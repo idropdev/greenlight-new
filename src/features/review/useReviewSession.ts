@@ -130,15 +130,30 @@ export function useReviewSession(sessionId: string | undefined) {
           });
         });
 
-        useFlyerStore.setState({
-          type: null,
-          size: ingested.size,
-          textNodes: ingested.textNodes,
-          imageNodes: ingested.imageNodes,
-          bgImageUrl: ingested.bgImageUrl,
-          selectedNodeId: null,
-          selectedNodeIds: [],
-        });
+        if (ingested.flyerType && ingested.fields) {
+          const bgUrl = ingested.bgImageUrl || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+          useFlyerStore.setState({
+            type: ingested.flyerType,
+            size: ingested.size,
+            fields: ingested.fields,
+            textNodes: [],
+            imageNodes: ingested.imageNodes,
+            bgImageUrl: bgUrl,
+            selectedNodeId: null,
+            selectedNodeIds: [],
+          });
+        } else {
+          useFlyerStore.setState({
+            type: null,
+            size: ingested.size,
+            fields: {},
+            textNodes: ingested.textNodes,
+            imageNodes: ingested.imageNodes,
+            bgImageUrl: ingested.bgImageUrl,
+            selectedNodeId: null,
+            selectedNodeIds: [],
+          });
+        }
 
         setReviewBgColor(ingested.bgColor);
       }

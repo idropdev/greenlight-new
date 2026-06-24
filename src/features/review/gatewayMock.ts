@@ -3,50 +3,38 @@ import { GatewayError } from './gatewayClient';
 
 // Helper to create the default seed design
 export const sampleA2uiDesign: A2uiDesign = {
-  schema_version: '0.1.1',
+  schema_version: '0.1.2',
   canvas: {
     preset: 'square',
     width: 1080,
     height: 1080,
   },
+  content: {
+    flyer_type: 'event',
+    fields: {
+      title: 'Sunset Yoga Retreat',
+      date: 'Saturday, October 14',
+      startTime: '6:00 PM',
+      endTime: '10:00 PM',
+      location: 'Hawaii Beach Park',
+      description: 'Join us for a relaxing sunset yoga session with experienced coaches. Light snacks and beverages are included.'
+    }
+  },
   layers: {
     background: {
-      type: 'color',
-      value: '#0B6E4F',
+      type: 'image',
+      value: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773',
+      fit: 'cover',
     },
     overlay: [
       {
-        id: 'text_1',
-        type: 'text',
-        content: 'Hawaii Yoga',
-        x: 0.1,
-        y: 0.2,
-        w: 0.8,
-        font: 'Space Grotesk',
-        size: 64,
-        color: '#ffffff',
-        align: 'center',
-      },
-      {
-        id: 'text_2',
-        type: 'text',
-        content: 'Join us for a relaxing sunset yoga session',
-        x: 0.15,
-        y: 0.45,
-        w: 0.7,
-        font: 'Inter',
-        size: 32,
-        color: '#F2EEE3',
-        align: 'center',
-      },
-      {
-        id: 'image_1',
+        id: 'image_logo',
         type: 'image',
         value: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?q=80&w=300',
-        x: 0.35,
-        y: 0.6,
-        w: 0.3,
-        h: 0.3,
+        x: 0.4,
+        y: 0.75,
+        w: 0.2,
+        h: 0.15,
       },
     ],
   },
