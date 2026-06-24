@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Download, Maximize, Clipboard } from 'lucide-react';
 import Konva from 'konva';
 import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer, Rect, Group, Line } from 'react-konva';
 
@@ -625,19 +626,6 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
       }
     }
   };
-
-  const renderCopyJsonButton = (isMobile: boolean) => (
-    <button
-      id={isMobile ? "copy-json-btn-mobile" : "copy-json-btn"}
-      onClick={handleCopyJsonClick}
-      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all duration-200 border border-transparent font-display min-h-[44px] md:min-h-0 bg-ochre text-graphite hover:bg-ochre/90 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-ochre/15"
-    >
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-      </svg>
-      {isMobile ? 'Copy JSON' : 'Copy as JSON'}
-    </button>
-  );
 
   const handleConfirmExportInEditor = async (width: number, height: number, format: 'png' | 'jpeg' | 'svg') => {
     await exportFlyer(width, height, format);
@@ -1658,66 +1646,6 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
     setMobileStage('details');
   }, [reset, selectNodes]);
 
-  const renderPreviewButton = (isMobile: boolean) => (
-    <button
-      id={isMobile ? "preview-btn-mobile" : "preview-btn"}
-      onClick={handleOpenPreview}
-      disabled={isCanvasEmpty || isGeneratingPreview}
-      className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all duration-200 border border-graphite/15 font-display min-h-[44px] md:min-h-0 ${
-        isCanvasEmpty || isGeneratingPreview
-          ? 'bg-graphite/10 text-graphite-muted cursor-not-allowed shadow-none border-transparent'
-          : 'bg-white text-graphite hover:text-pencil hover:border-pencil/30 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-graphite/5'
-      }`}
-    >
-      {isGeneratingPreview ? (
-        <>
-          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          Preparing
-        </>
-      ) : (
-        <>
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M16 4h4v4M4 16v4h4M20 16v4h-4" />
-          </svg>
-          {isMobile ? 'Preview' : 'Full View'}
-        </>
-      )}
-    </button>
-  );
-
-  const renderDownloadButton = (isMobile: boolean) => (
-    <button
-      id={isMobile ? "download-btn-mobile" : "download-btn"}
-      onClick={handleOpenExportModal}
-      disabled={!canExport || isExporting}
-      className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all duration-200 border border-transparent font-display min-h-[44px] md:min-h-0 ${
-        !canExport || isExporting
-          ? 'bg-graphite/15 text-graphite-muted cursor-not-allowed shadow-none'
-          : 'bg-pencil text-bone hover:bg-pencil/90 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-pencil/15'
-      }`}
-    >
-      {isExporting ? (
-        <>
-          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          Exporting
-        </>
-      ) : (
-        <>
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          {sessionId ? 'Approve & Download' : 'Export'}
-        </>
-      )}
-    </button>
-  );
-
   const campaignTypeSection = (
     <section className="space-y-3">
       <h2 className="text-xs font-semibold text-graphite-muted uppercase tracking-wider font-display">Campaign Type</h2>
@@ -2045,24 +1973,70 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                   <span className="text-[10px] text-graphite-muted mt-0.5">Paste-up flyer editor</span>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                {mobileStage === 'edit' && (
-                  <>
-                    {renderCopyJsonButton(true)}
-                    {renderPreviewButton(true)}
-                    {renderDownloadButton(true)}
-                  </>
-                )}
-              </div>
             </div>
 
-            {/* Desktop Download Button Container */}
-            <div className="hidden md:block absolute top-4 right-4 z-40">
-              <div className="flex items-center gap-2">
-                {renderCopyJsonButton(false)}
-                {renderPreviewButton(false)}
-                {renderDownloadButton(false)}
-              </div>
+            {/* Action Buttons (Vertical Stack of Bubbles) */}
+            <div 
+              className={`absolute right-4 z-40 flex flex-col gap-3 items-end transition-all duration-300 ${
+                isMobileLayout 
+                  ? (mobileStage === 'edit' ? 'top-18 opacity-100 pointer-events-auto' : 'top-18 opacity-0 pointer-events-none')
+                  : 'top-4 opacity-100 pointer-events-auto'
+              }`}
+            >
+              {/* Download Action Bubble */}
+              <button
+                id={isMobileLayout ? "download-btn-mobile" : "download-btn"}
+                onClick={handleOpenExportModal}
+                disabled={!canExport || isExporting}
+                className="action-bubble action-bubble-download"
+                aria-label={sessionId ? 'Approve and download flyer' : 'Export flyer'}
+              >
+                {isExporting ? (
+                  <svg className="animate-spin h-5 w-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <Download className="w-5 h-5 flex-shrink-0" />
+                )}
+                <span className="action-bubble-label">
+                  {isExporting ? 'Exporting' : (sessionId ? 'Approve & Download' : 'Export')}
+                </span>
+              </button>
+
+              {/* Preview Action Bubble */}
+              <button
+                id={isMobileLayout ? "preview-btn-mobile" : "preview-btn"}
+                onClick={handleOpenPreview}
+                disabled={isCanvasEmpty || isGeneratingPreview}
+                className="action-bubble action-bubble-preview"
+                aria-label="Preview flyer in full size"
+              >
+                {isGeneratingPreview ? (
+                  <svg className="animate-spin h-5 w-5 flex-shrink-0 text-graphite" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <Maximize className="w-5 h-5 flex-shrink-0" />
+                )}
+                <span className="action-bubble-label">
+                  {isGeneratingPreview ? 'Preparing' : (isMobileLayout ? 'Preview' : 'Full size')}
+                </span>
+              </button>
+
+              {/* Copy JSON Action Bubble */}
+              <button
+                id={isMobileLayout ? "copy-json-btn-mobile" : "copy-json-btn"}
+                onClick={handleCopyJsonClick}
+                className="action-bubble action-bubble-copy"
+                aria-label="Copy flyer design state as JSON"
+              >
+                <Clipboard className="w-5 h-5 flex-shrink-0" />
+                <span className="action-bubble-label">
+                  {isMobileLayout ? 'Copy JSON' : 'Copy as JSON'}
+                </span>
+              </button>
             </div>
 
             <aside
