@@ -34,7 +34,7 @@ export const BackgroundLayerSchema = z.object({
   fit: z.string().optional(),
 });
 
-export const DesignSchema = z.object({
+export const LegacyDesignSchema = z.object({
   schema_version: z.literal('0.1.1'),
   canvas: z.object({
     preset: z.enum(['square', 'portrait', 'story', 'landscape', 'custom']),
@@ -51,6 +51,30 @@ export const DesignSchema = z.object({
     intent: z.string().optional(),
   }),
 });
+
+export const FieldsDesignSchema = z.object({
+  schema_version: z.literal('0.1.2'),
+  canvas: z.object({
+    preset: z.enum(['square', 'portrait', 'story', 'landscape', 'custom']),
+    width: z.number(),
+    height: z.number(),
+  }),
+  content: z.object({
+    flyer_type: z.enum(['event', 'service', 'product', 'sale', 'realEstate', 'hiring']),
+    fields: z.record(z.string()),
+  }),
+  layers: z.object({
+    background: BackgroundLayerSchema,
+    overlay: z.array(OverlayElementSchema).optional(),
+  }),
+  meta: z.object({
+    source_agent: z.string(),
+    tenant: z.string(),
+    intent: z.string().optional(),
+  }),
+});
+
+export const DesignSchema = z.union([LegacyDesignSchema, FieldsDesignSchema]);
 
 export type Design = z.infer<typeof DesignSchema>;
 

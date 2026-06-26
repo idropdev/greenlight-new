@@ -7,7 +7,7 @@ import { Design } from './schema';
 export const Telemetry = {
   logFeatureGap(design: Design, session_id: string) {
     // Look for features in the design that might not be supported by Green Light yet
-    const hasUnsupportedFonts = design.layers.overlay.some(el => 
+    const hasUnsupportedFonts = (design.layers.overlay || []).some(el =>
       el.type === 'text' && !['Inter', 'Roboto', 'System'].includes(el.font)
     );
 

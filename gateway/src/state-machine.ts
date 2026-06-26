@@ -8,7 +8,7 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export class StateMachine {
   
-  static createSession(tenant: string, agent_id: string, intent?: string): Session {
+  static createSession(tenant: string, agent_id?: string, intent?: string): Session {
     const session_id = uuidv4();
     const review_url = `${GREENLIGHT_BASE_URL}/review/${session_id}`;
     const expires_at = Date.now() + SESSION_TTL_MS;
@@ -33,7 +33,7 @@ export class StateMachine {
       return { ok: false, error: 'not_found' };
     }
     if (this.isTerminal(session.state) || session.state === 'expired') {
-      return { ok: false, error: 'session_closed' };
+      return { ok: false, error: 'session_closed', state: session.state };
     }
     if (session.expires_at < Date.now()) {
       store.updateSession(session_id, { state: 'expired' });
