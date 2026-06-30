@@ -13,6 +13,56 @@ export interface IngestedDesign {
   fields?: Record<string, string>;
 }
 
+function normalizeDate(val: string): string | null {
+  const trimmed = val.trim();
+  const yyyymmddMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (yyyymmddMatch) {
+    return yyyymmddMatch[0];
+  }
+
+  const timestamp = Date.parse(trimmed);
+  if (!isNaN(timestamp)) {
+    const date = new Date(timestamp);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
+}
+
+function normalizeTime(val: string): string | null {
+  const trimmed = val.trim().toUpperCase();
+  const match = trimmed.match(/^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(AM|PM)?$/);
+  if (!match) {
+    return null;
+  }
+
+  let hour = parseInt(match[1], 10);
+  let minute = match[2] ? parseInt(match[2], 10) : 0;
+  const ampm = match[4];
+
+  if (isNaN(hour) || hour < 0 || hour > 23) return null;
+  if (isNaN(minute) || minute < 0 || minute > 59) return null;
+
+  if (ampm) {
+    if (hour < 1 || hour > 12) return null;
+    if (ampm === 'PM') {
+      if (hour !== 12) {
+        hour += 12;
+      }
+    } else if (ampm === 'AM') {
+      if (hour === 12) {
+        hour = 0;
+      }
+    }
+  }
+
+  const hh = String(hour).padStart(2, '0');
+  const mm = String(minute).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
 export function ingestDesign(design: any): IngestedDesign {
   const gaps: Array<{ reason: string }> = [];
 
@@ -89,6 +139,37 @@ export function ingestDesign(design: any): IngestedDesign {
     }
 
     const fields: Record<string, string> = { ...fieldsRaw };
+
+    // Normalize date
+    if (fields.date !== undefined && fields.date !== null) {
+      const normalizedDate = normalizeDate(fields.date);
+      if (normalizedDate !== null) {
+        fields.date = normalizedDate;
+      } else {
+        gaps.push({ reason: `unparseable date value: '${fields.date}'` });
+      }
+    }
+
+    // Normalize startTime
+    if (fields.startTime !== undefined && fields.startTime !== null) {
+      const normalizedStartTime = normalizeTime(fields.startTime);
+      if (normalizedStartTime !== null) {
+        fields.startTime = normalizedStartTime;
+      } else {
+        gaps.push({ reason: `unparseable startTime value: '${fields.startTime}'` });
+      }
+    }
+
+    // Normalize endTime
+    if (fields.endTime !== undefined && fields.endTime !== null) {
+      const normalizedEndTime = normalizeTime(fields.endTime);
+      if (normalizedEndTime !== null) {
+        fields.endTime = normalizedEndTime;
+      } else {
+        gaps.push({ reason: `unparseable endTime value: '${fields.endTime}'` });
+      }
+    }
+
     const validKeys = fieldConfig[flyerType]?.map((f) => f.key) || [];
     for (const key of Object.keys(fields)) {
       if (!validKeys.includes(key)) {

@@ -25,7 +25,7 @@ function formatSingleTime(rawValue: string): string {
       }
     }
   }
-  return '';
+  return rawValue;
 }
 
 export function formatFieldValue(
@@ -62,7 +62,7 @@ export function formatFieldValue(
         }
       }
     }
-    return ''; // Guard against invalid date values
+    return rawValue; // Guard against invalid date values
   }
 
   if (key === 'time') {
