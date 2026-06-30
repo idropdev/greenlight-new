@@ -72,3 +72,48 @@ export const FLYER_SIZE_INFO: SizeInfo[] = [
   },
 ];
 
+export function getTextWidth(text: string, fontSize: number, fontFamily: string): number {
+  const minWidth = 40;
+  if (!text) {
+    return minWidth;
+  }
+  if (typeof document === 'undefined') {
+    // Fallback if document is not defined (e.g. Server Side Rendering or tests)
+    return Math.max(minWidth, Math.ceil(text.length * fontSize * 0.55));
+  }
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+
+  if (!context) {
+    return minWidth;
+  }
+
+  context.font = `${fontSize}px ${fontFamily}`;
+  const lines = text.split('\n');
+  let maxWidth = 0;
+  for (const line of lines) {
+    const w = context.measureText(line).width;
+    if (w > maxWidth) {
+      maxWidth = w;
+    }
+  }
+  return Math.max(minWidth, Math.ceil(maxWidth));
+}
+
+export function clampTextNodeXAndWidth(
+  x: number,
+  width: number,
+  canvasWidth: number,
+  margin = 20
+): { x: number; width: number } {
+  const minWidth = 40;
+  let clampedX = Math.max(0, x);
+  if (clampedX + minWidth > canvasWidth - margin) {
+    clampedX = Math.max(0, canvasWidth - minWidth - margin);
+  }
+  const maxW = canvasWidth - clampedX - margin;
+  const clampedWidth = Math.max(minWidth, Math.min(width, maxW));
+  return { x: clampedX, width: clampedWidth };
+}
+
+

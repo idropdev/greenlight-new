@@ -9,7 +9,7 @@ import { useReviewSession } from '../../features/review/useReviewSession';
 import { ReviewOverlay } from '../../features/review/ReviewOverlay';
 import { buildDesignFromState } from '../../features/review/buildResult';
 import type { FlyerType, ImageNode, SizeKey, TextNode } from '../../features/flyer/flyerStore';
-import { getDimensionsForSize, FLYER_SIZE_INFO } from '../../features/flyer/sizes';
+import { getDimensionsForSize, FLYER_SIZE_INFO, getTextWidth, clampTextNodeXAndWidth } from '../../features/flyer/sizes';
 import { fieldConfig } from '../../features/flyer/fieldConfig';
 import { buildTextNodes } from '../../features/flyer/layoutPresets';
 import { useUnsplashSearch } from '../../features/unsplash/useUnsplashSearch';
@@ -127,10 +127,45 @@ function resolveNode(node: Partial<TextNode>) {
   };
 }
 
-function estimateTextHeight(node: Pick<TextNode, 'text' | 'fontSize' | 'width'>) {
+function getWrappedTextLines(text: string, fontSize: number, fontFamily: string, width: number): string[] {
+  if (!text) return [];
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) return [text];
+  
+  context.font = `${fontSize}px ${fontFamily}`;
+  
+  const paragraphs = text.split('\n');
+  const lines: string[] = [];
+  
+  for (const paragraph of paragraphs) {
+    const words = paragraph.split(' ');
+    let currentLine = '';
+    
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      const testLine = currentLine ? currentLine + ' ' + word : word;
+      const testWidth = context.measureText(testLine).width;
+      
+      if (testWidth > width && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+  }
+  return lines;
+}
+
+function estimateTextHeight(node: Pick<TextNode, 'text' | 'fontSize' | 'width' | 'fontFamily'>) {
+  const lines = getWrappedTextLines(node.text, node.fontSize, node.fontFamily, node.width);
+  const lineCount = Math.max(1, lines.length);
   const lineHeight = node.fontSize * 1.2;
-  const estimatedLines = Math.max(1, Math.ceil((node.text.length * node.fontSize * 0.55) / Math.max(node.width, 1)));
-  return lineHeight * estimatedLines;
+  return lineHeight * lineCount;
 }
 
 function getTextMinWidth(node: Pick<TextNode, 'text' | 'fontFamily' | 'fontSize'>) {
@@ -153,31 +188,7 @@ function getTextMinWidth(node: Pick<TextNode, 'text' | 'fontFamily' | 'fontSize'
   return Math.max(TEXT_MIN_WIDTH, Math.ceil(context.measureText(longestWord).width));
 }
 
-function getTextWidth(text: string, fontSize: number, fontFamily: string) {
-  if (!text) {
-    return TEXT_MIN_WIDTH;
-  }
-
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-
-  if (!context) {
-    return TEXT_MIN_WIDTH;
-  }
-
-  context.font = `${fontSize}px ${fontFamily}`;
-  const lines = text.split('\n');
-  let maxWidth = 0;
-  for (const line of lines) {
-    const w = context.measureText(line).width;
-    if (w > maxWidth) {
-      maxWidth = w;
-    }
-  }
-  return Math.max(TEXT_MIN_WIDTH, Math.ceil(maxWidth));
-}
-
-function getNodeBounds(node: Pick<TextNode, 'x' | 'y' | 'text' | 'fontSize' | 'width'>): NodeBounds {
+function getNodeBounds(node: Pick<TextNode, 'x' | 'y' | 'text' | 'fontSize' | 'width' | 'fontFamily'>): NodeBounds {
   const height = estimateTextHeight(node);
   return {
     left: node.x,
@@ -424,13 +435,24 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   const bgImageUrl = useFlyerStore((state) => state.bgImageUrl);
   const rawTextNodes = useFlyerStore((state) => state.textNodes);
   const textNodes = useMemo<TextNode[]>(() => {
+    const dims = getDimensionsForSize(size);
+    const canvasWidth = dims.width;
+
     return rawTextNodes.map((node) => {
-      const effectiveWidth = node.autoWidth !== false
+      const initialWidth = node.autoWidth !== false
         ? getTextWidth(node.text, node.fontSize, node.fontFamily)
         : node.width;
-      return { ...node, width: effectiveWidth, autoWidth: node.autoWidth !== false };
+
+      const clamped = clampTextNodeXAndWidth(node.x, initialWidth, canvasWidth, 20);
+
+      return {
+        ...node,
+        x: clamped.x,
+        width: clamped.width,
+        autoWidth: node.autoWidth !== false
+      };
     });
-  }, [rawTextNodes]);
+  }, [rawTextNodes, size]);
   const selectedNodeId = useFlyerStore((state) => state.selectedNodeId);
   const selectedNodeIds = useFlyerStore((state) => state.selectedNodeIds);
   const imageNodes = useFlyerStore((state) => state.imageNodes);
@@ -1395,6 +1417,12 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
       draggedNode.position({ x: snappedX, y: snappedY });
     }
 
+    // Clamp the main dragged node position so it does not exceed canvas bounds
+    const clampedDraggedX = Math.max(0, Math.min(draggedNode.x(), trueWidth - node.width - 20));
+    if (clampedDraggedX !== draggedNode.x()) {
+      draggedNode.x(clampedDraggedX);
+    }
+
     const dragStart = dragStartRef.current;
     if (dragStart && dragStart.draggedId === node.id) {
       const dx = draggedNode.x() - dragStart.draggedX;
@@ -1405,8 +1433,11 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
           const stage = draggedNode.getStage();
           const otherNode = stage?.findOne('#' + id);
           if (otherNode) {
+            const targetNode = textNodes.find((n) => n.id === id);
+            const otherWidth = targetNode ? targetNode.width : 40;
+            const otherClampedX = Math.max(0, Math.min(position.x + dx, trueWidth - otherWidth - 20));
             otherNode.position({
-              x: position.x + dx,
+              x: otherClampedX,
               y: position.y + dy,
             });
           }
@@ -1472,6 +1503,11 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
       }
     }
 
+    // Clamp nextX and nextWidth using sizes utility
+    const clamped = clampTextNodeXAndWidth(nextX, nextWidth, trueWidth, 20);
+    nextX = clamped.x;
+    nextWidth = clamped.width;
+
     transformedNode.position({ x: nextX, y: transformedNode.y() });
     transformedNode.scaleX(1);
     transformedNode.scaleY(1);
@@ -1487,6 +1523,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
         text: node.text,
         fontSize: node.fontSize,
         width: nextWidth,
+        fontFamily: node.fontFamily,
       });
       highlightBg.width(nextWidth + highlightPad * 2);
       highlightBg.height(estimatedHeight + highlightPad * 2);
@@ -1498,6 +1535,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
         text: node.text,
         fontSize: node.fontSize,
         width: nextWidth,
+        fontFamily: node.fontFamily,
       });
       touchHitArea.width(nextWidth + 20);
       touchHitArea.height(estimatedHeight + 20);
@@ -2392,7 +2430,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                       onTouchCancel={(event: Konva.KonvaEventObject<TouchEvent>) => handleTouchEndText(event, node)}
                       onDragStart={() => handleTextDragStart(node)}
                       onDragMove={(event) => handleTextDragMove(event, node)}
-                      onDragEnd={(event) => {
+                       onDragEnd={(event) => {
                         setActiveGuides([]);
                         const draggedNode = event.target as Konva.Group;
                         const dragStart = dragStartRef.current;
@@ -2402,14 +2440,19 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                           const dy = draggedNode.y() - dragStart.draggedY;
 
                           Object.entries(dragStart.nodePositions).forEach(([id, position]) => {
+                            const targetNode = textNodes.find((n) => n.id === id);
+                            const nodeWidth = targetNode ? targetNode.width : 40;
+                            const clampedX = Math.max(0, Math.min(position.x + dx, trueWidth - nodeWidth - 20));
+
                             updateNode(id, {
-                              x: position.x + dx,
+                              x: clampedX,
                               y: position.y + dy,
                             });
                           });
                         } else {
+                          const clampedX = Math.max(0, Math.min(draggedNode.x(), trueWidth - node.width - 20));
                           updateNode(node.id, {
-                            x: draggedNode.x(),
+                            x: clampedX,
                             y: draggedNode.y(),
                           });
                         }
@@ -2429,10 +2472,12 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                           const textChild = kNode.findOne('Text') as Konva.Text | undefined;
                           const finalWidth = textChild ? textChild.width() : node.width;
 
+                          const clamped = clampTextNodeXAndWidth(kNode.x(), finalWidth, trueWidth, 20);
+
                           updateNode(node.id, {
-                            x: kNode.x(),
+                            x: clamped.x,
                             y: kNode.y(),
-                            width: finalWidth,
+                            width: clamped.width,
                             autoWidth: false,
                           });
                           return;
@@ -2450,11 +2495,13 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                         const isAutoWidth = node.autoWidth !== false;
                         const finalWidth = isAutoWidth ? node.width : Math.max(TEXT_MIN_WIDTH, node.width * scaleX);
 
+                        const clamped = clampTextNodeXAndWidth(kNode.x(), finalWidth, trueWidth, 20);
+
                         updateNode(node.id, {
-                          x: kNode.x(),
+                          x: clamped.x,
                           y: kNode.y(),
                           fontSize: newFontSize,
-                          ...(!isAutoWidth ? { width: finalWidth } : {}),
+                          ...(!isAutoWidth ? { width: clamped.width } : {}),
                         });
                         setActiveGuides([]);
                         lastTextTransformAnchorRef.current = null;
@@ -2495,6 +2542,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                         fontSize={node.fontSize}
                         fill={node.fill}
                         width={node.width}
+                        wrap="word"
                         align={node.align ?? 'left'}
                         shadowColor={leg.shadowEnabled ? leg.shadowColor : undefined}
                         shadowBlur={leg.shadowEnabled ? leg.shadowBlur : 0}

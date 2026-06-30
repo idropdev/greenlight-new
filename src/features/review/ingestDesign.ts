@@ -1,5 +1,5 @@
 import type { SizeKey, TextNode, ImageNode, FlyerType } from '../flyer/flyerStore';
-import { FLYER_DIMENSIONS } from '../flyer/sizes';
+import { FLYER_DIMENSIONS, clampTextNodeXAndWidth } from '../flyer/sizes';
 import { fieldConfig } from '../flyer/fieldConfig';
 
 export interface IngestedDesign {
@@ -135,17 +135,20 @@ export function ingestDesign(design: any): IngestedDesign {
         const px_y = Math.round(element.y * height);
         const px_w = Math.round(element.w * width);
 
+        const clamped = clampTextNodeXAndWidth(px_x, px_w, width, 20);
+
         textNodes.push({
           id: element.id,
           field: element.id,
           text: element.content || '',
-          x: px_x,
+          x: clamped.x,
           y: px_y,
           fontFamily: element.font || 'Inter, system-ui, sans-serif',
           fontSize: element.size || 24,
           fill: element.color || '#ffffff',
-          width: px_w,
+          width: clamped.width,
           align: element.align || 'left',
+          autoWidth: false,
           shadowEnabled: true,
           shadowColor: '#000000',
           shadowBlur: 6,

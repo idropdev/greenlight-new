@@ -1,5 +1,5 @@
 import type { FlyerState } from '../flyer/flyerStore';
-import { FLYER_DIMENSIONS } from '../flyer/sizes';
+import { FLYER_DIMENSIONS, getTextWidth, clampTextNodeXAndWidth } from '../flyer/sizes';
 import type { A2uiDesign, A2uiResult } from './gatewayClient';
 
 export function buildDesignFromState(
@@ -24,13 +24,19 @@ export function buildDesignFromState(
         if (index !== -1) {
           const node = stateTextNodes[index];
           stateTextNodes.splice(index, 1);
+
+          const effectiveWidth = node.autoWidth !== false
+            ? getTextWidth(node.text, node.fontSize, node.fontFamily)
+            : node.width;
+          const clamped = clampTextNodeXAndWidth(node.x, effectiveWidth, width, 20);
+
           overlaysList.push({
             id: node.id,
             type: 'text',
             content: node.text,
-            x: node.x / width,
+            x: clamped.x / width,
             y: node.y / height,
-            w: node.width / width,
+            w: clamped.width / width,
             font: node.fontFamily,
             size: node.fontSize,
             color: node.fill,
@@ -58,13 +64,18 @@ export function buildDesignFromState(
 
   // Append remaining text nodes
   for (const node of stateTextNodes) {
+    const effectiveWidth = node.autoWidth !== false
+      ? getTextWidth(node.text, node.fontSize, node.fontFamily)
+      : node.width;
+    const clamped = clampTextNodeXAndWidth(node.x, effectiveWidth, width, 20);
+
     overlaysList.push({
       id: node.id,
       type: 'text',
       content: node.text,
-      x: node.x / width,
+      x: clamped.x / width,
       y: node.y / height,
-      w: node.width / width,
+      w: clamped.width / width,
       font: node.fontFamily,
       size: node.fontSize,
       color: node.fill,
