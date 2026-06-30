@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Download, Maximize, Clipboard } from 'lucide-react';
+import { Download, Maximize, Clipboard, Trash2 } from 'lucide-react';
 import Konva from 'konva';
 import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer, Rect, Group, Line } from 'react-konva';
 
@@ -220,14 +220,12 @@ function nanoid() {
 
 type ImageNodeViewProps = {
   node: ImageNode;
-  selected: boolean;
   onSelect: (event: Konva.KonvaEventObject<Event>) => void;
   onUpdate: (id: string, partial: Partial<ImageNode>) => void;
-  onRemove: (id: string) => void;
   onReady: () => void;
 };
 
-const ImageNodeView: React.FC<ImageNodeViewProps> = ({ node, selected, onSelect, onUpdate, onRemove, onReady }) => {
+const ImageNodeView: React.FC<ImageNodeViewProps> = ({ node, onSelect, onUpdate, onReady }) => {
   const [image] = useImage(node.url);
 
   useEffect(() => {
@@ -281,43 +279,7 @@ const ImageNodeView: React.FC<ImageNodeViewProps> = ({ node, selected, onSelect,
           if (stage) stage.container().style.cursor = 'default';
         }}
       />
-      {selected && (
-        <Group
-          x={node.x + node.width - 12}
-          y={node.y - 12}
-          onClick={(event) => {
-            event.cancelBubble = true;
-            onRemove(node.id);
-          }}
-          onTap={(event) => {
-            event.cancelBubble = true;
-            onRemove(node.id);
-          }}
-          onMouseEnter={(event) => {
-            const stage = event.target.getStage();
-            if (stage) stage.container().style.cursor = 'pointer';
-          }}
-          onMouseLeave={(event) => {
-            const stage = event.target.getStage();
-            if (stage) stage.container().style.cursor = 'default';
-          }}
-        >
-          <Rect x={0} y={0} width={24} height={24} cornerRadius={12} fill="#2D2D2A" opacity={0.92} />
-          <KonvaText
-            text="x"
-            x={0}
-            y={2}
-            width={24}
-            height={20}
-            align="center"
-            verticalAlign="middle"
-            fontFamily="Inter, Arial, sans-serif"
-            fontSize={14}
-            fill="#f5efe4"
-            listening={false}
-          />
-        </Group>
-      )}
+
     </Group>
   );
 };
@@ -463,8 +425,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   const updateNode = useFlyerStore((state) => state.updateNode);
   const addImageNode = useFlyerStore((state) => state.addImageNode);
   const updateImageNode = useFlyerStore((state) => state.updateImageNode);
-  const removeImageNode = useFlyerStore((state) => state.removeImageNode);
-  const removeTextNode = useFlyerStore((state) => state.removeTextNode);
+
   const deleteSelectedNodes = useFlyerStore((state) => state.deleteSelectedNodes);
   const selectNodes = useFlyerStore((state) => state.selectNodes);
   const setBgImageUrl = useFlyerStore((state) => state.setBgImageUrl);
@@ -590,6 +551,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   const imageFileInputRef = useRef<HTMLInputElement>(null);
   const uploadedUrlRef = useRef<string | null>(null);
   const uploadedImageUrlsRef = useRef<Set<string>>(new Set());
+  const hasGeneratedInitialTextRef = useRef(false);
   const dragStartRef = useRef<{
     draggedId: string;
     draggedX: number;
@@ -942,13 +904,14 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   }, [searchError]);
 
   useEffect(() => {
-    if (!type || !bgImageUrl || textNodes.length > 0 || !hasRequiredDetails(type, fields)) {
+    if (hasGeneratedInitialTextRef.current || !type || !bgImageUrl || textNodes.length > 0 || !hasRequiredDetails(type, fields)) {
       return;
     }
 
     const style = reviewSession?.design?.content?.style;
     const generatedNodes = buildTextNodes(type, size, fields, style);
     if (generatedNodes.length > 0) {
+      hasGeneratedInitialTextRef.current = true;
       setTextNodes(generatedNodes);
       trackEvent('flyer_created', { flyerType: type, size });
     }
@@ -1088,10 +1051,12 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
     setType(newType);
     trackEvent('campaign_type_selected', { flyerType: newType });
     selectNodes([]);
+    hasGeneratedInitialTextRef.current = false;
     setTextNodes([]);
 
     if (bgImageUrl && hasRequiredDetails(newType, fields)) {
       const generatedNodes = buildTextNodes(newType, size, fields);
+      hasGeneratedInitialTextRef.current = generatedNodes.length > 0;
       setTextNodes(generatedNodes);
       trackEvent('flyer_created', { flyerType: newType, size });
     }
@@ -1618,20 +1583,6 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
     setImageRenderVersion((version) => version + 1);
   }, []);
 
-  const handleRemoveImageNode = useCallback((id: string) => {
-    trackEvent('node_deleted', { count: 1 });
-    const node = useFlyerStore.getState().imageNodes.find((imageNode) => imageNode.id === id);
-    if (node && uploadedImageUrlsRef.current.has(node.url)) {
-      uploadedImageUrlsRef.current.delete(node.url);
-      URL.revokeObjectURL(node.url);
-    }
-    removeImageNode(id);
-  }, [removeImageNode]);
-
-  const handleRemoveTextNode = useCallback((id: string) => {
-    trackEvent('node_deleted', { count: 1 });
-    removeTextNode(id);
-  }, [removeTextNode]);
 
   const handleDeleteSelectedNodes = useCallback(() => {
     const state = useFlyerStore.getState();
@@ -1716,6 +1667,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
     uploadedImageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     uploadedImageUrlsRef.current.clear();
     selectNodes([]);
+    hasGeneratedInitialTextRef.current = false;
     reset();
   }, [reset, selectNodes]);
 
@@ -1735,6 +1687,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
     uploadedImageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     uploadedImageUrlsRef.current.clear();
     selectNodes([]);
+    hasGeneratedInitialTextRef.current = false;
     reset();
     setMobileStage('details');
   }, [reset, selectNodes]);
@@ -2391,10 +2344,8 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                   <ImageNodeView
                     key={node.id}
                     node={node}
-                    selected={selectedImageNode?.id === node.id}
                     onSelect={handleImageSelect}
                     onUpdate={updateImageNode}
-                    onRemove={handleRemoveImageNode}
                     onReady={handleImageReady}
                   />
                 ))}
@@ -2606,43 +2557,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                         shadowOffsetY={leg.shadowEnabled ? 1 : 0}
                         shadowEnabled={leg.shadowEnabled}
                       />
-                      {!isExporting && selectedNodeId === node.id && selectedNodeIds.length <= 1 && (
-                        <Group
-                          x={node.width - 12}
-                          y={-12}
-                          onClick={(event) => {
-                            event.cancelBubble = true;
-                            handleRemoveTextNode(node.id);
-                          }}
-                          onTap={(event) => {
-                            event.cancelBubble = true;
-                            handleRemoveTextNode(node.id);
-                          }}
-                          onMouseEnter={(event) => {
-                            const stage = event.target.getStage();
-                            if (stage) stage.container().style.cursor = 'pointer';
-                          }}
-                          onMouseLeave={(event) => {
-                            const stage = event.target.getStage();
-                            if (stage) stage.container().style.cursor = 'default';
-                          }}
-                        >
-                          <Rect x={0} y={0} width={24} height={24} cornerRadius={12} fill="#2D2D2A" opacity={0.92} />
-                          <KonvaText
-                            text="x"
-                            x={0}
-                            y={2}
-                            width={24}
-                            height={20}
-                            align="center"
-                            verticalAlign="middle"
-                            fontFamily="Inter, Arial, sans-serif"
-                            fontSize={14}
-                            fill="#f5efe4"
-                            listening={false}
-                          />
-                        </Group>
-                      )}
+
                     </Group>
                   );
                 })}
@@ -2836,6 +2751,18 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
 
                 <div className="w-[1px] h-6 bg-graphite/10" />
 
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedNodes}
+                  className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg border border-pencil/20 bg-pencil/10 text-pencil hover:bg-pencil/20 hover:border-pencil/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-pencil/30 cursor-pointer shadow-sm"
+                  title="Delete layer"
+                  aria-label="Delete layer"
+                >
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
+                </button>
+
+                <div className="w-[1px] h-6 bg-graphite/10" />
+
                 {/* More Button */}
                 <button
                   type="button"
@@ -2843,6 +2770,26 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                   className="px-2.5 py-1.5 rounded-lg bg-nonrepro/10 hover:bg-nonrepro/25 text-nonrepro text-xs font-bold font-display hover:scale-105 active:scale-95 transition-all flex items-center justify-center min-h-[32px] cursor-pointer"
                 >
                   More
+                </button>
+              </div>
+            )}
+
+            {isMobileLayout && !isExpanded && selectedImageNode && (
+              <div
+                className="absolute left-1/2 bottom-3 z-[45] -translate-x-1/2 flex items-center gap-2 p-1.5 bg-bone-light/95 backdrop-blur-md border border-graphite/15 shadow-xl rounded-xl pointer-events-auto select-none min-h-[44px]"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedNodes}
+                  className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-pencil/20 bg-pencil/10 text-pencil hover:bg-pencil/20 hover:border-pencil/30 active:scale-[0.98] transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-pencil/30 cursor-pointer shadow-sm min-h-[32px]"
+                  title="Delete image layer"
+                  aria-label="Delete image layer"
+                >
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
+                  <span className="text-xs font-bold font-display">Delete</span>
                 </button>
               </div>
             )}

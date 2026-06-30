@@ -112,11 +112,20 @@ export const useFlyerStore = create<FlyerStore>((set) => ({
       selectedNodeIds: state.selectedNodeIds.filter((x) => x !== id),
     })),
   removeTextNode: (id) =>
-    set((state) => ({
-      textNodes: state.textNodes.filter((node) => node.id !== id),
-      selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId,
-      selectedNodeIds: state.selectedNodeIds.filter((x) => x !== id),
-    })),
+    set((state) => {
+      const removedNode = state.textNodes.find((node) => node.id === id);
+      const nextFields =
+        removedNode?.field && Object.prototype.hasOwnProperty.call(state.fields, removedNode.field)
+          ? { ...state.fields, [removedNode.field]: '' }
+          : state.fields;
+
+      return {
+        fields: nextFields,
+        textNodes: state.textNodes.filter((node) => node.id !== id),
+        selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId,
+        selectedNodeIds: state.selectedNodeIds.filter((x) => x !== id),
+      };
+    }),
   deleteSelectedNodes: () =>
     set((state) => {
       const targets = new Set<string>();
@@ -129,7 +138,15 @@ export const useFlyerStore = create<FlyerStore>((set) => ({
         return {};
       }
 
+      const clearedFields = state.textNodes.reduce<Record<string, string>>((acc, node) => {
+        if (targets.has(node.id) && node.field && Object.prototype.hasOwnProperty.call(state.fields, node.field)) {
+          acc[node.field] = '';
+        }
+        return acc;
+      }, {});
+
       return {
+        fields: Object.keys(clearedFields).length > 0 ? { ...state.fields, ...clearedFields } : state.fields,
         textNodes: state.textNodes.filter((node) => !targets.has(node.id)),
         imageNodes: state.imageNodes.filter((node) => !targets.has(node.id)),
         selectedNodeId: null,
