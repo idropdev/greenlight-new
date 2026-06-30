@@ -6,7 +6,9 @@ export function buildDesignFromState(
   state: FlyerState,
   bgColor?: string | null,
   meta?: any,
-  originalOverlays?: any[]
+  originalOverlays?: any[] | null,
+  bgBlur?: number,
+  bgOpacity?: number
 ): A2uiDesign {
   const size = state.size || 'square';
   const dimensions = FLYER_DIMENSIONS[size] || FLYER_DIMENSIONS.square;
@@ -97,7 +99,7 @@ export function buildDesignFromState(
   }
 
   // Map background
-  let background: { type: 'color' | 'image' | 'gradient'; value: string; fit?: 'cover' } | null = null;
+  let background: any = null;
   if (bgColor) {
     background = {
       type: 'color',
@@ -114,6 +116,50 @@ export function buildDesignFromState(
     background = {
       type: 'color',
       value: '#ffffff',
+    };
+  }
+
+  if (bgBlur !== undefined) {
+    background.blur = bgBlur;
+  }
+  if (bgOpacity !== undefined) {
+    background.opacity = bgOpacity;
+  }
+
+  if (state.type) {
+    const styleObj: Record<string, any> = {};
+    for (const node of state.textNodes) {
+      if (node.field) {
+        styleObj[node.field] = {
+          fontFamily: node.fontFamily,
+          shadowEnabled: node.shadowEnabled,
+          shadowColor: node.shadowColor,
+          shadowBlur: node.shadowBlur,
+          shadowOpacity: node.shadowOpacity,
+          highlightEnabled: node.highlightEnabled,
+          highlightColor: node.highlightColor,
+          highlightOpacity: node.highlightOpacity,
+        };
+      }
+    }
+
+    return {
+      schema_version: '0.1.3',
+      canvas: {
+        preset: size,
+        width,
+        height,
+      },
+      content: {
+        flyer_type: state.type,
+        fields: state.fields,
+        style: Object.keys(styleObj).length > 0 ? styleObj : undefined,
+      },
+      layers: {
+        background,
+        overlay: overlaysList,
+      },
+      meta: meta || {},
     };
   }
 

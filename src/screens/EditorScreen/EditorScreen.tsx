@@ -479,6 +479,16 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   const [mobileStage, setMobileStage] = useState<'details' | 'edit'>('details');
 
   useEffect(() => {
+    if (reviewSession?.design?.layers?.background) {
+      const bg = reviewSession.design.layers.background;
+      const blurVal = typeof bg.blur === 'number' ? Math.max(0, Math.min(20, bg.blur)) : 0;
+      const opacityVal = typeof bg.opacity === 'number' ? Math.max(0, Math.min(100, bg.opacity)) : 50;
+      setBackgroundBlur(blurVal);
+      setBackgroundOpacity(opacityVal);
+    }
+  }, [reviewSession]);
+
+  useEffect(() => {
     if (selectedNodeId) {
       const isText = textNodes.some((n) => n.id === selectedNodeId);
       if (isText) return;
@@ -614,7 +624,9 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
         state,
         effectiveBgColor,
         reviewSession?.design?.meta,
-        reviewSession?.design?.layers?.overlay
+        reviewSession?.design?.layers?.overlay,
+        backgroundBlur,
+        backgroundOpacity
       );
       
       const jsonText = JSON.stringify(finalDesign, null, 2);
@@ -637,7 +649,9 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
           state,
           effectiveBgColor,
           reviewSession?.design?.meta,
-          reviewSession?.design?.layers?.overlay
+          reviewSession?.design?.layers?.overlay,
+          backgroundBlur,
+          backgroundOpacity
         );
         const jsonText = JSON.stringify(finalDesign, null, 2);
         const errorMsg = err instanceof Error ? err.message : String(err);
@@ -653,7 +667,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
     await exportFlyer(width, height, format);
     if (sessionId) {
       try {
-        await handleReviewExport(format, `${width}x${height}`);
+        await handleReviewExport(format, `${width}x${height}`, backgroundBlur, backgroundOpacity);
       } catch (err) {
         console.error('Failed to post review export:', err);
       }
@@ -930,12 +944,13 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
       return;
     }
 
-    const generatedNodes = buildTextNodes(type, size, fields);
+    const style = reviewSession?.design?.content?.style;
+    const generatedNodes = buildTextNodes(type, size, fields, style);
     if (generatedNodes.length > 0) {
       setTextNodes(generatedNodes);
       trackEvent('flyer_created', { flyerType: type, size });
     }
-  }, [type, size, fields, bgImageUrl, textNodes.length, setTextNodes]);
+  }, [type, size, fields, bgImageUrl, textNodes.length, setTextNodes, reviewSession]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -2904,7 +2919,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                 type="button"
                 onClick={async () => {
                   try {
-                    await handleSendBack();
+                    await handleSendBack(backgroundBlur, backgroundOpacity);
                     setShowSendBackModal(false);
                   } catch (err) {
                     console.error('Send back failed:', err);

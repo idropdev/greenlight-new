@@ -12,12 +12,15 @@ export interface A2uiDesign {
       type: 'image' | 'color' | 'gradient';
       value: string;
       fit?: 'cover';
+      blur?: number;
+      opacity?: number;
     };
     overlay: Array<any>;
   };
   content?: {
     flyer_type: string;
     fields: Record<string, string>;
+    style?: Record<string, any>;
   };
   meta?: {
     source_agent?: string;

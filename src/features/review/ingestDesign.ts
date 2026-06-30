@@ -8,9 +8,12 @@ export interface IngestedDesign {
   imageNodes: ImageNode[];
   bgImageUrl: string | null;
   bgColor: string | null;
+  bgBlur?: number;
+  bgOpacity?: number;
   gaps: Array<{ reason: string }>;
   flyerType?: FlyerType | null;
   fields?: Record<string, string>;
+  style?: Record<string, any>;
 }
 
 function normalizeDate(val: string): string | null {
@@ -117,6 +120,13 @@ export function ingestDesign(design: any): IngestedDesign {
     gaps.push({ reason: `unknown background type '${bgType}'` });
   }
 
+  // Parse background blur and opacity with clamping
+  const bgBlurRaw = design?.layers?.background?.blur;
+  const bgBlur = typeof bgBlurRaw === 'number' ? Math.max(0, Math.min(20, bgBlurRaw)) : 0;
+
+  const bgOpacityRaw = design?.layers?.background?.opacity;
+  const bgOpacity = typeof bgOpacityRaw === 'number' ? Math.max(0, Math.min(100, bgOpacityRaw)) : 50;
+
   // 3. Branch based on presence of content block
   const content = design?.content;
   const flyerTypeRaw = content?.flyer_type;
@@ -125,6 +135,19 @@ export function ingestDesign(design: any): IngestedDesign {
 
   const textNodes: TextNode[] = [];
   const imageNodes: ImageNode[] = [];
+
+  const BUNDLED_FONTS = [
+    'Inter',
+    'Montserrat',
+    'Playfair Display',
+    'Lora',
+    'Outfit',
+    'Syne',
+    'Anton',
+    'Righteous',
+    'JetBrains Mono',
+    'Cinzel',
+  ];
 
   if (hasContentBlock) {
     // Primary path: fields-based design
@@ -177,6 +200,54 @@ export function ingestDesign(design: any): IngestedDesign {
       }
     }
 
+    // Parse style map and log font gaps
+    const styleRaw = content?.style;
+    const styleCleaned: Record<string, any> = {};
+
+    if (styleRaw && typeof styleRaw === 'object') {
+      for (const [fieldName, fieldStyle] of Object.entries(styleRaw)) {
+        if (fieldStyle && typeof fieldStyle === 'object') {
+          const cleanedFieldStyle: any = {};
+          const fsObj = fieldStyle as any;
+
+          if (fsObj.fontFamily !== undefined && fsObj.fontFamily !== null) {
+            const font = String(fsObj.fontFamily);
+            if (BUNDLED_FONTS.includes(font)) {
+              cleanedFieldStyle.fontFamily = font;
+            } else {
+              cleanedFieldStyle.fontFamily = 'Inter';
+              gaps.push({ reason: `fontFamily '${font}' for field '${fieldName}' is not a bundled font` });
+            }
+          }
+
+          if (fsObj.shadowEnabled !== undefined) {
+            cleanedFieldStyle.shadowEnabled = Boolean(fsObj.shadowEnabled);
+          }
+          if (fsObj.shadowColor !== undefined) {
+            cleanedFieldStyle.shadowColor = String(fsObj.shadowColor);
+          }
+          if (fsObj.shadowBlur !== undefined && typeof fsObj.shadowBlur === 'number') {
+            cleanedFieldStyle.shadowBlur = Math.max(0, fsObj.shadowBlur);
+          }
+          if (fsObj.shadowOpacity !== undefined && typeof fsObj.shadowOpacity === 'number') {
+            cleanedFieldStyle.shadowOpacity = Math.max(0, Math.min(1, fsObj.shadowOpacity));
+          }
+
+          if (fsObj.highlightEnabled !== undefined) {
+            cleanedFieldStyle.highlightEnabled = Boolean(fsObj.highlightEnabled);
+          }
+          if (fsObj.highlightColor !== undefined) {
+            cleanedFieldStyle.highlightColor = String(fsObj.highlightColor);
+          }
+          if (fsObj.highlightOpacity !== undefined && typeof fsObj.highlightOpacity === 'number') {
+            cleanedFieldStyle.highlightOpacity = Math.max(0, Math.min(1, fsObj.highlightOpacity));
+          }
+
+          styleCleaned[fieldName] = cleanedFieldStyle;
+        }
+      }
+    }
+
     // layers.overlay (optional): only image items -> ImageNode[]
     const overlays = design?.layers?.overlay || [];
     for (const element of overlays) {
@@ -203,9 +274,12 @@ export function ingestDesign(design: any): IngestedDesign {
       imageNodes,
       bgImageUrl,
       bgColor,
+      bgBlur,
+      bgOpacity,
       gaps,
       flyerType,
       fields,
+      style: styleCleaned,
     };
   } else {
     // Fallback path: legacy overlay-only design
@@ -261,6 +335,8 @@ export function ingestDesign(design: any): IngestedDesign {
       imageNodes,
       bgImageUrl,
       bgColor,
+      bgBlur,
+      bgOpacity,
       gaps,
     };
   }

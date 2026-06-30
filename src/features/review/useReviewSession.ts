@@ -16,7 +16,7 @@ export function useReviewSession(sessionId: string | undefined) {
   const [isPosting, setIsPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
 
-  const handleSendBack = async () => {
+  const handleSendBack = async (bgBlur?: number, bgOpacity?: number) => {
     if (!sessionId || !session?.design) return;
     setIsPosting(true);
     setPostError(null);
@@ -26,7 +26,9 @@ export function useReviewSession(sessionId: string | undefined) {
         state,
         reviewBgColor,
         session.design.meta,
-        session.design.layers?.overlay
+        session.design.layers?.overlay,
+        bgBlur,
+        bgOpacity
       );
       const resultPayload = buildResult({
         stateLabel: 'sent_back',
@@ -58,7 +60,7 @@ export function useReviewSession(sessionId: string | undefined) {
     }
   };
 
-  const handleReviewExport = async (format: string, resolution: string) => {
+  const handleReviewExport = async (format: string, resolution: string, bgBlur?: number, bgOpacity?: number) => {
     if (!sessionId || !session?.design) return;
     setIsPosting(true);
     setPostError(null);
@@ -68,7 +70,9 @@ export function useReviewSession(sessionId: string | undefined) {
         state,
         reviewBgColor,
         session.design.meta,
-        session.design.layers?.overlay
+        session.design.layers?.overlay,
+        bgBlur,
+        bgOpacity
       );
       const resultPayload = buildResult({
         stateLabel: 'approved_downloaded',

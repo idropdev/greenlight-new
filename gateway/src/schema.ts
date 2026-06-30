@@ -32,6 +32,19 @@ export const BackgroundLayerSchema = z.object({
   type: z.enum(['image', 'color', 'gradient']),
   value: z.string(),
   fit: z.string().optional(),
+  blur: z.number().optional().transform((v) => (v !== undefined ? Math.max(0, Math.min(20, v)) : undefined)),
+  opacity: z.number().optional().transform((v) => (v !== undefined ? Math.max(0, Math.min(100, v)) : undefined)),
+});
+
+export const StyleFieldSchema = z.object({
+  fontFamily: z.string().optional(),
+  shadowEnabled: z.boolean().optional(),
+  shadowColor: z.string().optional(),
+  shadowBlur: z.number().optional().transform((v) => (v !== undefined ? Math.max(0, v) : undefined)),
+  shadowOpacity: z.number().optional().transform((v) => (v !== undefined ? Math.max(0, Math.min(1, v)) : undefined)),
+  highlightEnabled: z.boolean().optional(),
+  highlightColor: z.string().optional(),
+  highlightOpacity: z.number().optional().transform((v) => (v !== undefined ? Math.max(0, Math.min(1, v)) : undefined)),
 });
 
 export const LegacyDesignSchema = z.object({
@@ -53,7 +66,7 @@ export const LegacyDesignSchema = z.object({
 });
 
 export const FieldsDesignSchema = z.object({
-  schema_version: z.literal('0.1.2'),
+  schema_version: z.union([z.literal('0.1.2'), z.literal('0.1.3')]),
   canvas: z.object({
     preset: z.enum(['square', 'portrait', 'story', 'landscape', 'custom']),
     width: z.number(),
@@ -62,6 +75,7 @@ export const FieldsDesignSchema = z.object({
   content: z.object({
     flyer_type: z.enum(['event', 'service', 'product', 'sale', 'realEstate', 'hiring']),
     fields: z.record(z.string()),
+    style: z.record(StyleFieldSchema).optional(),
   }),
   layers: z.object({
     background: BackgroundLayerSchema,

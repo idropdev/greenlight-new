@@ -30,7 +30,8 @@ const DESCRIPTION_FIELD_KEYS: Record<FlyerType, string[]> = {
 export function buildTextNodes(
   type: FlyerType | null,
   size: SizeKey,
-  fields: Record<string, string>
+  fields: Record<string, string>,
+  style?: Record<string, any>
 ): TextNode[] {
   if (!type) return [];
 
@@ -81,22 +82,9 @@ export function buildTextNodes(
     descriptionFieldKeys.includes(def.key)
   );
 
-  // 1. Primary field: upper-middle
-  primaryFields.forEach((def, index) => {
-    const val = fields[def.key];
-    const y = Math.round(height * 0.25 + index * (primaryFontSize * 1.3));
-    nodes.push({
-      id: def.key,
-      field: def.key,
-      text: formatFieldValue(def.key, val, fields),
-      x: nodeX,
-      y,
+  const resolveStyle = (fieldKey: string) => {
+    const defaults = {
       fontFamily: 'Inter, system-ui, sans-serif',
-      fontSize: primaryFontSize,
-      fill: '#ffffff',
-      width: nodeWidth,
-      align: 'left',
-      autoWidth: true,
       shadowEnabled: true,
       shadowColor: '#000000',
       shadowBlur: 6,
@@ -104,6 +92,49 @@ export function buildTextNodes(
       highlightEnabled: false,
       highlightColor: '#000000',
       highlightOpacity: 0.5,
+    };
+
+    const fieldStyle = style?.[fieldKey];
+    if (!fieldStyle) {
+      return defaults;
+    }
+
+    return {
+      fontFamily: fieldStyle.fontFamily ?? defaults.fontFamily,
+      shadowEnabled: fieldStyle.shadowEnabled !== undefined ? fieldStyle.shadowEnabled : defaults.shadowEnabled,
+      shadowColor: fieldStyle.shadowColor ?? defaults.shadowColor,
+      shadowBlur: fieldStyle.shadowBlur !== undefined ? fieldStyle.shadowBlur : defaults.shadowBlur,
+      shadowOpacity: fieldStyle.shadowOpacity !== undefined ? fieldStyle.shadowOpacity : defaults.shadowOpacity,
+      highlightEnabled: fieldStyle.highlightEnabled !== undefined ? fieldStyle.highlightEnabled : defaults.highlightEnabled,
+      highlightColor: fieldStyle.highlightColor ?? defaults.highlightColor,
+      highlightOpacity: fieldStyle.highlightOpacity !== undefined ? fieldStyle.highlightOpacity : defaults.highlightOpacity,
+    };
+  };
+
+  // 1. Primary field: upper-middle
+  primaryFields.forEach((def, index) => {
+    const val = fields[def.key];
+    const y = Math.round(height * 0.25 + index * (primaryFontSize * 1.3));
+    const s = resolveStyle(def.key);
+    nodes.push({
+      id: def.key,
+      field: def.key,
+      text: formatFieldValue(def.key, val, fields),
+      x: nodeX,
+      y,
+      fontFamily: s.fontFamily,
+      fontSize: primaryFontSize,
+      fill: '#ffffff',
+      width: nodeWidth,
+      align: 'left',
+      autoWidth: true,
+      shadowEnabled: s.shadowEnabled,
+      shadowColor: s.shadowColor,
+      shadowBlur: s.shadowBlur,
+      shadowOpacity: s.shadowOpacity,
+      highlightEnabled: s.highlightEnabled,
+      highlightColor: s.highlightColor,
+      highlightOpacity: s.highlightOpacity,
     });
   });
 
@@ -111,25 +142,26 @@ export function buildTextNodes(
   secondaryFields.forEach((def, index) => {
     const val = fields[def.key];
     const y = Math.round(height * 0.48 + index * (secondaryFontSize + 30 * heightScale));
+    const s = resolveStyle(def.key);
     nodes.push({
       id: def.key,
       field: def.key,
       text: formatFieldValue(def.key, val, fields),
       x: nodeX,
       y,
-      fontFamily: 'Inter, system-ui, sans-serif',
+      fontFamily: s.fontFamily,
       fontSize: secondaryFontSize,
       fill: '#ffffff',
       width: nodeWidth,
       align: 'left',
       autoWidth: true,
-      shadowEnabled: true,
-      shadowColor: '#000000',
-      shadowBlur: 6,
-      shadowOpacity: 0.6,
-      highlightEnabled: false,
-      highlightColor: '#000000',
-      highlightOpacity: 0.5,
+      shadowEnabled: s.shadowEnabled,
+      shadowColor: s.shadowColor,
+      shadowBlur: s.shadowBlur,
+      shadowOpacity: s.shadowOpacity,
+      highlightEnabled: s.highlightEnabled,
+      highlightColor: s.highlightColor,
+      highlightOpacity: s.highlightOpacity,
     });
   });
 
@@ -137,25 +169,26 @@ export function buildTextNodes(
   descriptionFields.forEach((def, index) => {
     const val = fields[def.key];
     const y = Math.round(height * 0.78 + index * (descriptionFontSize * 1.4));
+    const s = resolveStyle(def.key);
     nodes.push({
       id: def.key,
       field: def.key,
       text: formatFieldValue(def.key, val, fields),
       x: nodeX,
       y,
-      fontFamily: 'Inter, system-ui, sans-serif',
+      fontFamily: s.fontFamily,
       fontSize: descriptionFontSize,
       fill: '#ffffff',
       width: nodeWidth,
       align: 'left',
       autoWidth: true,
-      shadowEnabled: true,
-      shadowColor: '#000000',
-      shadowBlur: 6,
-      shadowOpacity: 0.6,
-      highlightEnabled: false,
-      highlightColor: '#000000',
-      highlightOpacity: 0.5,
+      shadowEnabled: s.shadowEnabled,
+      shadowColor: s.shadowColor,
+      shadowBlur: s.shadowBlur,
+      shadowOpacity: s.shadowOpacity,
+      highlightEnabled: s.highlightEnabled,
+      highlightColor: s.highlightColor,
+      highlightOpacity: s.highlightOpacity,
     });
   });
 

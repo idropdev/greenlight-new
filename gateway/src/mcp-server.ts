@@ -36,7 +36,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "post_design",
-        description: "Post a completed A2UI v0.1.2 design object to an existing session for review. The design must include the following required top-level keys: 'schema_version' (must be exactly '0.1.2'), 'canvas' (with required keys: 'preset', 'width', 'height'), 'content' (with required keys: 'flyer_type' and 'fields'), 'layers' (with required key: 'background'), and 'meta'. Supported canvas presets are: 'square', 'portrait', 'story', 'landscape', 'custom'. The flyer_type can be one of: 'event', 'service', 'product', 'sale', 'realEstate', 'hiring'. The field keys in 'fields' are camelCase and vary per flyer_type: - event: title, date, startTime, endTime, location, description; - service: businessName, serviceOffered, tagline, contact, description; - product: productName, price, tagline, callToAction, description; - sale: headline, discount, promoCode, validUntil, description; - realEstate: propertyTitle, price, address, features, contact; - hiring: jobTitle, company, location, payRange, howToApply. The background object requires 'type' (one of: 'image', 'color', 'gradient') and 'value' (a URL string for 'image' type or a hex string for 'color' type), and optional 'fit'. An optional 'overlay' array contains elements with coordinates normalized (0 to 1), where (x, y) represents the top-left corner. The 'meta' object requires 'source_agent' and 'tenant', and optional 'intent'.",
+        description: "Post a completed A2UI v0.1.3 design object to an existing session for review. The design must include the following required top-level keys: 'schema_version' (must be '0.1.2' or '0.1.3'), 'canvas' (with required keys: 'preset', 'width', 'height'), 'content' (with required keys: 'flyer_type' and 'fields', and optional 'style'), 'layers' (with required key: 'background'), and 'meta'. Supported canvas presets are: 'square', 'portrait', 'story', 'landscape', 'custom'. The flyer_type can be one of: 'event', 'service', 'product', 'sale', 'realEstate', 'hiring'. The field keys in 'fields' are camelCase and vary per flyer_type: - event: title, date, startTime, endTime, location, description; - service: businessName, serviceOffered, tagline, contact, description; - product: productName, price, tagline, callToAction, description; - sale: headline, discount, promoCode, validUntil, description; - realEstate: propertyTitle, price, address, features, contact; - hiring: jobTitle, company, location, payRange, howToApply. The background object requires 'type' (one of: 'image', 'color', 'gradient') and 'value' (a URL string for 'image' type or a hex string for 'color' type), and optional 'fit', 'blur' (0..20), and 'opacity' (0..100). The content.style object is optional, mapping field keys to styles containing fontFamily (bundled fonts: Inter, Montserrat, Playfair Display, Lora, Outfit, Syne, Anton, Righteous, JetBrains Mono, Cinzel), shadow*, highlight* properties. An optional 'overlay' array contains elements with coordinates normalized (0 to 1), where (x, y) represents the top-left corner. The 'meta' object requires 'source_agent' and 'tenant', and optional 'intent'.",
         inputSchema: {
           type: "object",
           properties: {
@@ -46,12 +46,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             design: {
               type: "object",
-              description: "The complete A2UI v0.1.2 design object conforming to the FieldsDesignSchema.",
+              description: "The complete A2UI v0.1.3 design object conforming to the FieldsDesignSchema.",
               properties: {
                 schema_version: {
                   type: "string",
-                  enum: ["0.1.2"],
-                  description: "Must be exactly '0.1.2'."
+                  enum: ["0.1.2", "0.1.3"],
+                  description: "Must be '0.1.2' or '0.1.3'."
                 },
                 canvas: {
                   type: "object",
@@ -88,6 +88,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                       additionalProperties: {
                         type: "string"
                       }
+                    },
+                    style: {
+                      type: "object",
+                      description: "Optional custom styles for text fields.",
+                      additionalProperties: {
+                        type: "object",
+                        properties: {
+                          fontFamily: {
+                            type: "string",
+                            enum: ["Inter", "Montserrat", "Playfair Display", "Lora", "Outfit", "Syne", "Anton", "Righteous", "JetBrains Mono", "Cinzel"],
+                            description: "Font name (must be a bundled font)."
+                          },
+                          shadowEnabled: { type: "boolean", description: "Enable drop shadow (default: true)." },
+                          shadowColor: { type: "string", description: "Hex color of shadow (default: '#000000')." },
+                          shadowBlur: { type: "number", description: "Shadow blur radius (default: 6)." },
+                          shadowOpacity: { type: "number", minimum: 0, maximum: 1, description: "Shadow opacity 0..1 (default: 0.6)." },
+                          highlightEnabled: { type: "boolean", description: "Enable highlight box (default: false)." },
+                          highlightColor: { type: "string", description: "Hex color of highlight box (default: '#000000')." },
+                          highlightOpacity: { type: "number", minimum: 0, maximum: 1, description: "Highlight box opacity 0..1 (default: 0.5)." }
+                        }
+                      }
                     }
                   },
                   required: ["flyer_type", "fields"]
@@ -112,6 +133,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         fit: {
                           type: "string",
                           description: "Image fit mode (typically 'cover')."
+                        },
+                        blur: {
+                          type: "number",
+                          minimum: 0,
+                          maximum: 20,
+                          description: "Optional background image blur radius in pixels (0..20, default 0)."
+                        },
+                        opacity: {
+                          type: "number",
+                          minimum: 0,
+                          maximum: 100,
+                          description: "Optional background image opacity remap (0..100, 50=true image, 100=black, default 50)."
                         }
                       },
                       required: ["type", "value"]
@@ -275,7 +308,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             if (issue.code === 'invalid_union' && 'unionErrors' in issue) {
               const unionErrors = (issue as any).unionErrors as z.ZodError[];
               unionErrors.forEach((ue, index) => {
-                const schemaName = index === 0 ? "A2UI v0.1.1 (Legacy Schema)" : "A2UI v0.1.2 (Fields Schema)";
+                const schemaName = index === 0 ? "A2UI v0.1.1 (Legacy Schema)" : "A2UI v0.1.2/0.1.3 (Fields Schema)";
                 processIssues(ue.errors, `${schemaName}: `);
               });
             } else {
