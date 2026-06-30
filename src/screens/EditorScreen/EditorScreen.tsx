@@ -17,6 +17,7 @@ import { TextControls } from '../../features/editor/TextControls';
 import { useExport } from '../../features/editor/useExport';
 import { ExportDialog } from '../../features/editor/ExportDialog';
 import { PreviewOverlay } from '../../features/editor/PreviewOverlay';
+import { InlineEditWidget } from '../../features/editor/InlineEditWidget';
 import { ensureFontsLoaded, FONTS } from '../../lib/fonts';
 import { formatFieldValue } from '../../lib/formatters';
 import { trackEvent } from '../../lib/analytics';
@@ -279,7 +280,6 @@ const ImageNodeView: React.FC<ImageNodeViewProps> = ({ node, onSelect, onUpdate,
           if (stage) stage.container().style.cursor = 'default';
         }}
       />
-
     </Group>
   );
 };
@@ -425,7 +425,6 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   const updateNode = useFlyerStore((state) => state.updateNode);
   const addImageNode = useFlyerStore((state) => state.addImageNode);
   const updateImageNode = useFlyerStore((state) => state.updateImageNode);
-
   const deleteSelectedNodes = useFlyerStore((state) => state.deleteSelectedNodes);
   const selectNodes = useFlyerStore((state) => state.selectNodes);
   const setBgImageUrl = useFlyerStore((state) => state.setBgImageUrl);
@@ -440,6 +439,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   const [imageRenderVersion, setImageRenderVersion] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
   const [mobileStage, setMobileStage] = useState<'details' | 'edit'>('details');
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
 
   useEffect(() => {
     if (reviewSession?.design?.layers?.background) {
@@ -924,7 +924,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
       .map((id) => stage?.findOne('#' + id))
       .filter((node): node is Konva.Node => Boolean(node));
 
-    if (selectedNodes.length > 0 && transformer) {
+    if (selectedNodes.length > 0 && transformer && !editingNodeId) {
       transformer.nodes(selectedNodes);
       transformer.getLayer()?.batchDraw();
       return;
@@ -932,7 +932,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
 
     transformerRef.current?.nodes([]);
     transformerRef.current?.getLayer()?.batchDraw();
-  }, [selectedNodeIds, textNodes]);
+  }, [selectedNodeIds, textNodes, editingNodeId]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -1582,7 +1582,6 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   const handleImageReady = useCallback(() => {
     setImageRenderVersion((version) => version + 1);
   }, []);
-
 
   const handleDeleteSelectedNodes = useCallback(() => {
     const state = useFlyerStore.getState();
@@ -2415,7 +2414,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                       id={node.id}
                       x={node.x}
                       y={node.y}
-                      draggable
+                      draggable={editingNodeId !== node.id}
                       onClick={(event) => {
                         if (justLongPressedRef.current) {
                           event.cancelBubble = true;
@@ -2429,6 +2428,14 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                           return;
                         }
                         handleTextSelect(event, node.id);
+                      }}
+                      onDblClick={(event) => {
+                        event.cancelBubble = true;
+                        setEditingNodeId(node.id);
+                      }}
+                      onDblTap={(event) => {
+                        event.cancelBubble = true;
+                        setEditingNodeId(node.id);
                       }}
                       onTouchStart={(event: Konva.KonvaEventObject<TouchEvent>) => handleTouchStartText(event, node)}
                       onTouchMove={(event: Konva.KonvaEventObject<TouchEvent>) => handleTouchMoveText(event, node)}
@@ -2543,6 +2550,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                         />
                       )}
                       <KonvaText
+                        visible={editingNodeId !== node.id}
                         text={node.text}
                         fontFamily={node.fontFamily}
                         fontSize={node.fontSize}
@@ -2557,7 +2565,6 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                         shadowOffsetY={leg.shadowEnabled ? 1 : 0}
                         shadowEnabled={leg.shadowEnabled}
                       />
-
                     </Group>
                   );
                 })}
@@ -2645,6 +2652,33 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                 )}
               </Layer>
             </Stage>
+
+            {editingNodeId && (
+              (() => {
+                const editingNode = textNodes.find((n) => n.id === editingNodeId);
+                if (!editingNode) return null;
+                return (
+                  <InlineEditWidget
+                    key={editingNode.id}
+                    node={editingNode}
+                    scale={scale}
+                    onCommit={(newText) => {
+                      trackEvent('text_inline_edited', {
+                        nodeId: editingNode.id,
+                        field: editingNode.field,
+                        textLength: newText.length,
+                      });
+                      updateNode(editingNode.id, { text: newText });
+                      setEditingNodeId(null);
+                      stageRef.current?.batchDraw();
+                    }}
+                    onCancel={() => {
+                      setEditingNodeId(null);
+                    }}
+                  />
+                );
+              })()
+            )}
 
             {(isFetchingOrLoading || !fontsLoaded) && (
               <div className="absolute inset-0 bg-bone/80 flex flex-col items-center justify-center gap-3 backdrop-blur-sm z-20">
