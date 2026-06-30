@@ -4,8 +4,11 @@ import { store } from './store';
 import { StateMachine } from './state-machine';
 import { DesignSchema, ResultSchema } from './schema';
 import { z } from 'zod';
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { createMcpServer } from './mcp-server';
 
 const app = express();
+const transports = new Map<string, SSEServerTransport>();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({
@@ -15,7 +18,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type']
 }));
 
-app.use(express.json());
+app.use((req, res, next) => {
+  console.log(`[REQ] ${req.method} ${req.url}`);
+  next();
+});
+
+app.use('/session', express.json());
 
 app.use((error: Error, req: Request, res: Response, next: NextFunction): void => {
   if (error instanceof SyntaxError && 'body' in error) {
@@ -154,6 +162,38 @@ app.post('/session/:id/result', (req: Request, res: Response): void => {
     }
     res.status(500).json({ error: 'internal_error' });
   }
+});
+
+app.get('/sse', async (req: Request, res: Response) => {
+  const transport = new SSEServerTransport('/message', res);
+  const mcpServer = createMcpServer();
+  await mcpServer.connect(transport);
+  
+  transports.set(transport.sessionId, transport);
+  console.log(`[SSE] New agent connected, session id: ${transport.sessionId}`);
+  
+  res.on('close', () => {
+    console.log(`[SSE] Agent connection closed, session id: ${transport.sessionId}`);
+    transports.delete(transport.sessionId);
+  });
+});
+
+app.post('/message', async (req: Request, res: Response) => {
+  const sessionId = req.query.sessionId as string;
+  if (!sessionId) {
+    res.status(400).send("Missing sessionId parameter");
+    return;
+  }
+  
+  const transport = transports.get(sessionId);
+  if (!transport) {
+    res.status(404).send("Session not found");
+    return;
+  }
+  
+  console.log(`[SSE] Received message for session ${sessionId}`);
+  console.log(`[SSE] Body type: ${typeof req.body}, Is undefined: ${req.body === undefined}`);
+  await transport.handlePostMessage(req, res);
 });
 
 app.listen(PORT, () => {

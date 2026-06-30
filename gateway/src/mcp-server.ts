@@ -1,24 +1,24 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { StateMachine } from "./state-machine";
 import { store } from "./store";
 import { DesignSchema } from "./schema";
 
-const server = new Server(
-  {
-    name: "greenlight-gateway",
-    version: "1.0.0",
-  },
-  {
-    capabilities: {
-      tools: {},
+export function createMcpServer() {
+  const server = new Server(
+    {
+      name: "greenlight-gateway",
+      version: "1.0.0",
     },
-  }
-);
+    {
+      capabilities: {
+        tools: {},
+      },
+    }
+  );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
@@ -366,12 +366,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   throw new Error(`Unknown tool: ${name}`);
-});
+  });
 
-async function runServer() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Gateway MCP Server running on stdio");
+  return server;
 }
-
-runServer().catch(console.error);
