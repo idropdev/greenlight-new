@@ -56,9 +56,17 @@ type NodeBounds = {
 
 const SNAP_THRESHOLD = 6;
 const GUIDE_COLOR = '#7FA8D8';
-const SNAP_GUIDE_COLOR = '#E4572E';
+const FALLBACK_PENCIL_COLOR = '#347A3E';
 const TEXT_MIN_WIDTH = 40;
 const TEXT_SIDE_ANCHORS = new Set(['middle-left', 'middle-right']);
+
+function getCssColorToken(name: string, fallback: string) {
+  if (typeof window === 'undefined') {
+    return fallback;
+  }
+
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
 
 function hasRequiredDetails(type: FlyerType | null, fields: Record<string, string>) {
   if (!type) return false;
@@ -576,6 +584,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   const { search, autoSearch, shuffle, isLoading: searchLoading, error: searchError, photos, noResults } = useUnsplashSearch();
   const [imgElement, imgStatus] = useImage(bgImageUrl);
   const { exportFlyer, isExporting, generatePreviewUrl } = useExport(stageRef, transformerRef, imageTransformerRef);
+  const snapGuideColor = useMemo(() => getCssColorToken('--color-pencil', FALLBACK_PENCIL_COLOR), []);
 
   const [showCopiedToast, setShowCopiedToast] = useState(false);
   const [fallbackCopyText, setFallbackCopyText] = useState<string | null>(null);
@@ -2394,7 +2403,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                           ? [guide.position, 0, guide.position, trueHeight]
                           : [0, guide.position, trueWidth, guide.position]
                       }
-                      stroke={SNAP_GUIDE_COLOR}
+                      stroke={snapGuideColor}
                       strokeWidth={2 / scale}
                       dash={[6 / scale, 4 / scale]}
                       listening={false}

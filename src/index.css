@@ -6,7 +6,7 @@
   --color-bone-light: #FAF7F0;
   --color-graphite:   #2D2D2A;
   --color-graphite-muted: #6B6B63;
-  --color-pencil:     #E4572E;
+  --color-pencil:     #347A3E;
   --color-nonrepro:   #7FA8D8;
   --color-ochre:      #D9A521;
 
@@ -264,7 +264,7 @@ input[type="range"]:focus-visible::-moz-range-thumb {
 .action-bubble-download {
   background-color: var(--color-pencil);
   color: var(--color-bone);
-  box-shadow: 0 4px 10px rgba(228, 87, 46, 0.25);
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--color-pencil) 25%, transparent);
 }
 .action-bubble-download:hover,
 .action-bubble-download:focus-within {
