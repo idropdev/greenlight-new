@@ -464,6 +464,8 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   const addImageNode = useFlyerStore((state) => state.addImageNode);
   const updateImageNode = useFlyerStore((state) => state.updateImageNode);
   const removeImageNode = useFlyerStore((state) => state.removeImageNode);
+  const removeTextNode = useFlyerStore((state) => state.removeTextNode);
+  const deleteSelectedNodes = useFlyerStore((state) => state.deleteSelectedNodes);
   const selectNodes = useFlyerStore((state) => state.selectNodes);
   const setBgImageUrl = useFlyerStore((state) => state.setBgImageUrl);
   const reset = useFlyerStore((state) => state.reset);
@@ -1617,6 +1619,7 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   }, []);
 
   const handleRemoveImageNode = useCallback((id: string) => {
+    trackEvent('node_deleted', { count: 1 });
     const node = useFlyerStore.getState().imageNodes.find((imageNode) => imageNode.id === id);
     if (node && uploadedImageUrlsRef.current.has(node.url)) {
       uploadedImageUrlsRef.current.delete(node.url);
@@ -1625,9 +1628,46 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
     removeImageNode(id);
   }, [removeImageNode]);
 
+  const handleRemoveTextNode = useCallback((id: string) => {
+    trackEvent('node_deleted', { count: 1 });
+    removeTextNode(id);
+  }, [removeTextNode]);
+
+  const handleDeleteSelectedNodes = useCallback(() => {
+    const state = useFlyerStore.getState();
+    const targets = new Set<string>();
+    if (state.selectedNodeId) {
+      targets.add(state.selectedNodeId);
+    }
+    state.selectedNodeIds.forEach((id) => targets.add(id));
+
+    if (targets.size === 0) {
+      return;
+    }
+
+    trackEvent('node_deleted', { count: targets.size });
+
+    // Clean up revoked URLs for image nodes
+    state.imageNodes.forEach((node) => {
+      if (targets.has(node.id) && uploadedImageUrlsRef.current.has(node.url)) {
+        uploadedImageUrlsRef.current.delete(node.url);
+        URL.revokeObjectURL(node.url);
+      }
+    });
+
+    deleteSelectedNodes();
+  }, [deleteSelectedNodes]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Delete' || !selectedImageNode) {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') {
+        return;
+      }
+
+      // Check if we have anything selected
+      const state = useFlyerStore.getState();
+      const hasSelection = state.selectedNodeId !== null || state.selectedNodeIds.length > 0;
+      if (!hasSelection) {
         return;
       }
 
@@ -1636,18 +1676,18 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
+        (target instanceof HTMLElement && (target.isContentEditable || target.closest('[contenteditable="true"]')))
       ) {
         return;
       }
 
       event.preventDefault();
-      handleRemoveImageNode(selectedImageNode.id);
+      handleDeleteSelectedNodes();
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleRemoveImageNode, selectedImageNode]);
+  }, [handleDeleteSelectedNodes]);
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -2566,6 +2606,43 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
                         shadowOffsetY={leg.shadowEnabled ? 1 : 0}
                         shadowEnabled={leg.shadowEnabled}
                       />
+                      {!isExporting && selectedNodeId === node.id && selectedNodeIds.length <= 1 && (
+                        <Group
+                          x={node.width - 12}
+                          y={-12}
+                          onClick={(event) => {
+                            event.cancelBubble = true;
+                            handleRemoveTextNode(node.id);
+                          }}
+                          onTap={(event) => {
+                            event.cancelBubble = true;
+                            handleRemoveTextNode(node.id);
+                          }}
+                          onMouseEnter={(event) => {
+                            const stage = event.target.getStage();
+                            if (stage) stage.container().style.cursor = 'pointer';
+                          }}
+                          onMouseLeave={(event) => {
+                            const stage = event.target.getStage();
+                            if (stage) stage.container().style.cursor = 'default';
+                          }}
+                        >
+                          <Rect x={0} y={0} width={24} height={24} cornerRadius={12} fill="#2D2D2A" opacity={0.92} />
+                          <KonvaText
+                            text="x"
+                            x={0}
+                            y={2}
+                            width={24}
+                            height={20}
+                            align="center"
+                            verticalAlign="middle"
+                            fontFamily="Inter, Arial, sans-serif"
+                            fontSize={14}
+                            fill="#f5efe4"
+                            listening={false}
+                          />
+                        </Group>
+                      )}
                     </Group>
                   );
                 })}

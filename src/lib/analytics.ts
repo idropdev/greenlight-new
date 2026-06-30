@@ -11,7 +11,8 @@ export type AnalyticsEvent =
   | { name: 'review_downloaded'; properties: { sessionId: string; format: string; resolution: string } }
   | { name: 'review_sent_back'; properties: { sessionId: string } }
   | { name: 'design_copied_json'; properties: { sessionId?: string } }
-  | { name: 'agent_feature_gap'; properties: { reason: string; preset?: string } };
+  | { name: 'agent_feature_gap'; properties: { reason: string; preset?: string } }
+  | { name: 'node_deleted'; properties: { count: number } };
 
 /**
  * Initializes PostHog analytics if running in production.

@@ -53,6 +53,8 @@ export interface FlyerActions {
   addImageNode: (node: ImageNode) => void;
   updateImageNode: (id: string, partial: Partial<ImageNode>) => void;
   removeImageNode: (id: string) => void;
+  removeTextNode: (id: string) => void;
+  deleteSelectedNodes: () => void;
   selectNode: (id: string | null) => void;
   selectNodes: (ids: string[]) => void;
   setBgImageUrl: (url: string | null) => void;
@@ -107,8 +109,33 @@ export const useFlyerStore = create<FlyerStore>((set) => ({
     set((state) => ({
       imageNodes: state.imageNodes.filter((node) => node.id !== id),
       selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId,
-      selectedNodeIds: state.selectedNodeId === id ? [] : state.selectedNodeIds,
+      selectedNodeIds: state.selectedNodeIds.filter((x) => x !== id),
     })),
+  removeTextNode: (id) =>
+    set((state) => ({
+      textNodes: state.textNodes.filter((node) => node.id !== id),
+      selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId,
+      selectedNodeIds: state.selectedNodeIds.filter((x) => x !== id),
+    })),
+  deleteSelectedNodes: () =>
+    set((state) => {
+      const targets = new Set<string>();
+      if (state.selectedNodeId) {
+        targets.add(state.selectedNodeId);
+      }
+      state.selectedNodeIds.forEach((id) => targets.add(id));
+
+      if (targets.size === 0) {
+        return {};
+      }
+
+      return {
+        textNodes: state.textNodes.filter((node) => !targets.has(node.id)),
+        imageNodes: state.imageNodes.filter((node) => !targets.has(node.id)),
+        selectedNodeId: null,
+        selectedNodeIds: [],
+      };
+    }),
   selectNode: (id) => set({ selectedNodeId: id, selectedNodeIds: id ? [id] : [] }),
   selectNodes: (ids) => set({ selectedNodeIds: ids, selectedNodeId: ids.length > 0 ? ids[ids.length - 1] : null }),
   setBgImageUrl: (url) => set({ bgImageUrl: url }),
